@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS app_events (
+    id SERIAL PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    payload JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

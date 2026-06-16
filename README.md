@@ -26,7 +26,7 @@ GitHub CLI
 ### Clone Repository
 
 ```bash
-git clone https://github.com/<your-username>/SE3S-Assignment-Prototyping1.git
+git clone https://github.com/felix00112/SE3S-Assignment-Prototyping1.git
 cd SE3S-Assignment-Prototyping1
 ```
 

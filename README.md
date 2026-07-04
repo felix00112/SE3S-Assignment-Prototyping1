@@ -106,6 +106,8 @@ The currently implemented minimal workflow MVP supports a single flash-sale even
 6. The Lua script updates the reservation status to a detailed outcome
 7. Clients read the current state through `GET /reservations/{reservation_id}`
 
+The current MVP architecture diagram is documented in [docs/architecture/workflow-mvp.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/docs/architecture/workflow-mvp.md:1), including which parts are already implemented and which are planned next.
+
 Current detailed statuses:
 
 - `pending`
@@ -113,6 +115,43 @@ Current detailed statuses:
 - `sold_out`
 - `duplicate`
 - `event_not_found`
+
+## Targeted Architecture
+
+The following diagram shows the intended full architecture beyond the current MVP:
+
+```mermaid
+flowchart TD
+    A["k6 / Locust"] --> B["Nginx Load Balancer"]
+    B --> C1["FastAPI API 1"]
+    B --> C2["FastAPI API 2"]
+    B --> C3["FastAPI API N"]
+
+    C1 --> D["Redis Rate Limiter"]
+    C2 --> D
+    C3 --> D
+
+    D --> E{"Admission Gate<br/>queue not full?"}
+    E -- "No" --> F["429 / 503 rejected"]
+    E -- "Yes" --> G["Redis Booking Queue"]
+
+    G --> H1["Worker Cell 1<br/>fixed slots/sec"]
+    G --> H2["Worker Cell 2<br/>fixed slots/sec"]
+    G --> HN["Worker Cell N<br/>fixed slots/sec"]
+
+    H1 --> I["Atomic Redis Lua Script"]
+    H2 --> I
+    HN --> I
+
+    I --> J["seats:available<br/>hot counter"]
+    I --> K["reserved_users set"]
+    I --> L["reservation:{id}<br/>status + expiry"]
+
+    M["Cleanup Worker<br/>optional"] --> L
+    M --> J
+
+    L --> N["Status Endpoint"]
+```
 
 ## Running The MVP
 

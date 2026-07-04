@@ -2,6 +2,38 @@
 
 This document describes the currently implemented minimal booking workflow MVP.
 
+## Diagram
+
+Implemented MVP parts are marked with `[MVP]`. Planned-next parts are marked with `[NEXT]`.
+
+```mermaid
+flowchart TD
+    client["Client / Manual HTTP Tests"] --> api["FastAPI API [MVP]\nPOST /events/{event_id}/book"]
+    api --> queue["Redis Booking Queue [MVP]\nevent:{event_id}:booking_queue"]
+    queue --> worker["Worker Cell [MVP]\nBLPOP consumer"]
+    worker --> lua["Atomic Redis Lua Script [MVP]\nreserve_atomic.lua"]
+    lua --> seats["Redis seats_available counter [MVP]"]
+    lua --> users["Redis reserved_users set [MVP]"]
+    lua --> reservation["Redis reservation state [MVP]\nstatus / event_id / user_id"]
+    reservation --> status["Status Endpoint [MVP]\nGET /reservations/{reservation_id}"]
+
+    client --> status
+
+    nginx["Nginx Load Balancer [NEXT]"]
+    replicas["FastAPI Replicas [NEXT]"]
+    ratelimit["Redis Rate Limiter [NEXT]"]
+    gate["Admission Gate [NEXT]"]
+    cleanup["Cleanup Worker [NEXT]"]
+    k6["k6 Load Tests [NEXT]"]
+
+    k6 --> nginx
+    nginx --> replicas
+    replicas --> ratelimit
+    ratelimit --> gate
+    gate --> queue
+    cleanup --> reservation
+```
+
 ## Scope
 
 - Single prototype event (`event:1`)

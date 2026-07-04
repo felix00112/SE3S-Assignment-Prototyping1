@@ -3,6 +3,11 @@
 This repository contains the prototype setup for the Scalability Engineering prototyping assignment.
 
 The folder structure is now aligned with the selected reservation-system architecture based on Nginx, FastAPI replicas, Redis rate limiting, an admission gate, a Redis booking queue, worker cells, an atomic Redis Lua script, and a reservation status endpoint.
+
+Current MVP workflow:
+
+`POST /events/{event_id}/book` -> Redis queue -> worker -> atomic Redis Lua script -> reservation status in Redis -> `GET /reservations/{reservation_id}`
+
 ## Getting Started
 
 ### Prerequisites
@@ -89,6 +94,67 @@ pip install -r requirements.txt
 
 The application itself should still be started through Docker Compose during development, because Redis is provided as a Docker container.
 
+## Workflow MVP
+
+The currently implemented minimal workflow MVP supports a single flash-sale event and demonstrates the core asynchronous booking architecture:
+
+1. The API accepts a booking request through `POST /events/{event_id}/book`
+2. The API writes initial reservation metadata and sets the status to `pending`
+3. The API pushes the booking request into a Redis list that acts as the booking queue
+4. A worker consumes queue entries with `BLPOP`
+5. The worker calls a Redis Lua script to make the reservation decision atomically
+6. The Lua script updates the reservation status to a detailed outcome
+7. Clients read the current state through `GET /reservations/{reservation_id}`
+
+Current detailed statuses:
+
+- `pending`
+- `reserved`
+- `sold_out`
+- `duplicate`
+- `event_not_found`
+
+## Running The MVP
+
+Start API and Redis:
+
+```bash
+docker compose up --build
+```
+
+Start the worker from the repository root in a second terminal:
+
+```bash
+python -m workers.cells.worker
+```
+
+The current `docker-compose.yml` starts the API and Redis. The worker is still run separately for the MVP.
+
+## How To Read This Repo
+
+The repository is intentionally split into two kinds of folders:
+
+- executable code folders
+  - `services/api/`
+  - `workers/cells/`
+- architecture and state-contract folders
+  - `infrastructure/redis/booking-queue/`
+  - `infrastructure/redis/reservation-state/`
+  - `infrastructure/redis/lua/`
+
+The important idea is:
+
+- code that runs lives in `services/` and `workers/`
+- Redis-related architecture contracts and infrastructure artifacts live in `infrastructure/redis/`
+
+This keeps the repo easy to explain:
+
+- if you want to see what the API does, go to `services/api/`
+- if you want to see what the worker does, go to `workers/cells/`
+- if you want to understand the queue, Redis state model, or Lua logic, go to `infrastructure/redis/`
+
+These `infrastructure/redis/*` folders are not meant to add overhead. They mainly document the architecture and give the Redis-specific parts of the system a clear home.
+
 ## Redis
 
 Connect to Redis:
@@ -108,6 +174,15 @@ Expected response:
 ```text
 PONG
 ```
+
+Seed the prototype event before manual testing:
+
+```redis
+SET event:1:seats_available 3
+DEL event:1:reserved_users
+```
+
+This creates 3 seats for the single-event prototype and clears any previous duplicate-booking state.
 
 ## Useful Commands
 
@@ -148,7 +223,30 @@ docker compose logs redis
 GET /
 GET /health
 GET /redis-test
+POST /events/{event_id}/book
+GET /reservations/{reservation_id}
 ```
+
+## Manual Testing
+
+The manual HTTP scenarios live in [services/api/app/test_main.http](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/services/api/app/test_main.http:1).
+
+Recommended test flow after seeding Redis:
+
+1. `user-1` -> expect `reserved`
+2. `user-2` -> expect `reserved`
+3. `user-3` -> expect `reserved`
+4. `user-4` -> expect `sold_out`
+5. `user-1` again -> expect `duplicate`
+
+To test `event_not_found`, delete the seat key and run another booking request:
+
+```redis
+DEL event:1:seats_available
+DEL event:1:reserved_users
+```
+
+Then the next booking request should become `event_not_found`.
 
 ## Architecture-Oriented Folder Layout
 

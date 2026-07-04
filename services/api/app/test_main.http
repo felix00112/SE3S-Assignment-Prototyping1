@@ -5,7 +5,22 @@ Accept: application/json
 
 ###
 
-GET http://127.0.0.1:8000/hello/User
+# @name bookEvent
+POST http://127.0.0.1:8000/events/1/book
+Accept: application/json
+Content-Type: application/json
+
+{
+  "user_id": "user-1"
+}
+
+> {%
+    client.global.set("reservation_id", response.body.reservation_id);
+%}
+
+###
+
+GET http://127.0.0.1:8000/reservations/{{reservation_id}}
 Accept: application/json
 
 ###

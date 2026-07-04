@@ -1,0 +1,2 @@
+-- Placeholder for the atomic Redis Lua reservation script.
+-- The final seat allocation and reservation-state updates will live here.

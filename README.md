@@ -1,8 +1,8 @@
 # SE3S Assignment Prototyping 1
 
-This repository contains the initial prototype setup for the Scalability Engineering prototyping assignment.
+This repository contains the prototype setup for the Scalability Engineering prototyping assignment.
 
-The final application domain is still under discussion. The current setup is intentionally generic and provides a minimal scalable backend foundation using FastAPI, PostgreSQL, Redis, and Docker Compose.
+The folder structure is now aligned with the selected reservation-system architecture based on Nginx, FastAPI replicas, Redis rate limiting, an admission gate, a Redis booking queue, worker cells, an atomic Redis Lua script, and a reservation status endpoint.
 ## Getting Started
 
 ### Prerequisites
@@ -48,11 +48,10 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Expected services:
+Current compose-backed services:
 
 ```text
 api
-postgres
 redis
 ```
 
@@ -88,25 +87,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-The application itself should still be started through Docker Compose during development, because PostgreSQL and Redis are provided as Docker containers.
-
-## PostgreSQL
-
-Connect to PostgreSQL through Docker:
-
-```bash
-docker compose exec postgres psql -U postgres -d scaling_app
-```
-
-The PostgreSQL database can be accessed through any IDE or database client using the following connection settings:
-
-```text
-Host: localhost
-Port: 5432
-User: postgres
-Password: postgres
-Database: scaling_app
-```
+The application itself should still be started through Docker Compose during development, because Redis is provided as a Docker container.
 
 ## Redis
 
@@ -158,7 +139,6 @@ View logs:
 
 ```bash
 docker compose logs api
-docker compose logs postgres
 docker compose logs redis
 ```
 
@@ -170,13 +150,15 @@ GET /health
 GET /redis-test
 ```
 
-## Current Project Status
-
-The project currently contains a generic backend setup with FastAPI, PostgreSQL, Redis, and Docker Compose.
-
-The final application domain is still under discussion. Possible options are:
+## Architecture-Oriented Folder Layout
 
 ```text
-Flash-sale ticket reservation system
-Scalable quiz / answer processing platform
+gateway/nginx
+services/api
+workers/cells
+workers/cleanup              # optional
+infrastructure/redis
+tests/k6
+tests/locust                 # optional
+docs/architecture
 ```

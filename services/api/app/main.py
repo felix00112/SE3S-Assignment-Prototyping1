@@ -3,8 +3,15 @@ import json
 from uuid import uuid4
 
 import redis
-from fastapi import FastAPI
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+from .redis_keys import (
+    booking_queue_key,
+    reservation_event_key,
+    reservation_status_key,
+    reservation_user_key,
+)
 
 app = FastAPI()
 

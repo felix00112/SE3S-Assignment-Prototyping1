@@ -5,9 +5,8 @@ Accept: application/json
 
 ###
 
-# @name bookEvent
+# @name bookUser1
 POST http://127.0.0.1:8000/events/1/book
-Accept: application/json
 Content-Type: application/json
 
 {
@@ -15,12 +14,83 @@ Content-Type: application/json
 }
 
 > {%
-    client.global.set("reservation_id", response.body.reservation_id);
+    client.global.set("reservation_id_1", response.body.reservation_id);
 %}
 
 ###
 
-GET http://127.0.0.1:8000/reservations/{{reservation_id}}
-Accept: application/json
+GET http://127.0.0.1:8000/reservations/{{reservation_id_1}}
 
 ###
+
+# @name bookUser2
+POST http://127.0.0.1:8000/events/1/book
+Content-Type: application/json
+
+{
+  "user_id": "user-2"
+}
+
+> {%
+    client.global.set("reservation_id_2", response.body.reservation_id);
+%}
+
+###
+
+GET http://127.0.0.1:8000/reservations/{{reservation_id_2}}
+
+###
+
+# @name bookUser3
+POST http://127.0.0.1:8000/events/1/book
+Content-Type: application/json
+
+{
+  "user_id": "user-3"
+}
+
+> {%
+    client.global.set("reservation_id_3", response.body.reservation_id);
+%}
+
+###
+
+GET http://127.0.0.1:8000/reservations/{{reservation_id_3}}
+
+###
+
+# @name bookUser4
+POST http://127.0.0.1:8000/events/1/book
+Content-Type: application/json
+
+{
+  "user_id": "user-4"
+}
+
+> {%
+    client.global.set("reservation_id_4", response.body.reservation_id);
+%}
+
+###
+
+###
+
+GET http://127.0.0.1:8000/reservations/{{reservation_id_4}}
+
+###
+
+# @name bookUser1Again
+POST http://127.0.0.1:8000/events/1/book
+Content-Type: application/json
+
+{
+  "user_id": "user-1"
+}
+
+> {%
+    client.global.set("reservation_id_dup", response.body.reservation_id);
+%}
+
+###
+
+GET http://127.0.0.1:8000/reservations/{{reservation_id_dup}}

@@ -23,7 +23,7 @@ flowchart TD
     replicas["FastAPI Replicas [NEXT]"]
     ratelimit["Redis Rate Limiter [NEXT]"]
     gate["Admission Gate [NEXT]"]
-    cleanup["Cleanup Worker [NEXT]"]
+    cleanup["Cleanup Worker [optional]"]
     k6["k6 Load Tests [NEXT]"]
 
     k6 --> nginx

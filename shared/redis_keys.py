@@ -35,3 +35,7 @@ def reservation_event_key(reservation_id: str) -> str:
 
 def reservation_user_key(reservation_id: str) -> str:
     return reservation_key(reservation_id, "user_id")
+
+
+def rate_limit_user_key(user_id: str) -> str:
+    return f"ratelimit:user:{user_id}"

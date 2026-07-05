@@ -1,3 +1,4 @@
+import math
 import os
 import json
 from uuid import uuid4
@@ -6,6 +7,7 @@ import redis
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .rate_limiter import RateLimiter, RATE_LIMIT_ENABLED
 from .redis_keys import (
     booking_queue_key,
     reservation_event_key,
@@ -20,6 +22,8 @@ redis_client = redis.Redis(
     port=6379,
     decode_responses=True,
 )
+
+rate_limiter = RateLimiter(redis_client) if RATE_LIMIT_ENABLED else None
 
 
 class BookingRequest(BaseModel):
@@ -48,6 +52,15 @@ def redis_test():
 
 @app.post("/events/{event_id}/book")
 def book_event(event_id: int, booking_request: BookingRequest):
+    if rate_limiter is not None:
+        allowed, _remaining, retry_after_ms = rate_limiter.check(booking_request.user_id)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": str(math.ceil(retry_after_ms / 1000))},
+            )
+
     reservation_id = str(uuid4())
 
     queue_payload = {

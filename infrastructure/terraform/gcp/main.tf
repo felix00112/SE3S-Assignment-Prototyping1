@@ -5,6 +5,9 @@ provider "google" {
 }
 
 locals {
+  subnet_cidr      = "10.20.0.0/24"
+  redis_private_ip = cidrhost(local.subnet_cidr, 10)
+
   labels = {
     app         = "se3s"
     component   = "booking-mvp"
@@ -19,7 +22,7 @@ resource "google_compute_network" "mvp" {
 
 resource "google_compute_subnetwork" "mvp" {
   name          = "${var.name_prefix}-subnet"
-  ip_cidr_range = "10.20.0.0/24"
+  ip_cidr_range = local.subnet_cidr
   network       = google_compute_network.mvp.id
   region        = var.region
 }
@@ -50,12 +53,31 @@ resource "google_compute_firewall" "ssh" {
   target_tags   = ["${var.name_prefix}-ssh"]
 }
 
+resource "google_compute_firewall" "internal" {
+  name    = "${var.name_prefix}-allow-internal"
+  network = google_compute_network.mvp.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["6379"]
+  }
+
+  source_ranges = [local.subnet_cidr]
+  target_tags   = ["${var.name_prefix}-redis"]
+}
+
 resource "google_compute_instance" "mvp" {
-  name         = "${var.name_prefix}-vm"
+  count        = var.node_count
+  name         = count.index == 0 ? "${var.name_prefix}-vm" : "${var.name_prefix}-node-${count.index + 1}"
   machine_type = var.machine_type
   zone         = var.zone
-  tags         = ["${var.name_prefix}-api", "${var.name_prefix}-ssh"]
-  labels       = local.labels
+  tags = concat(
+    ["${var.name_prefix}-ssh"],
+    count.index == 0 ? ["${var.name_prefix}-api", "${var.name_prefix}-redis"] : []
+  )
+  labels = merge(local.labels, {
+    role = count.index == 0 ? "coordinator" : "worker"
+  })
 
   boot_disk {
     initialize_params {
@@ -67,6 +89,7 @@ resource "google_compute_instance" "mvp" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.mvp.id
+    network_ip = cidrhost(local.subnet_cidr, 10 + count.index)
 
     access_config {
       # Ephemeral public IP for a short-lived assignment prototype.
@@ -74,10 +97,12 @@ resource "google_compute_instance" "mvp" {
   }
 
   metadata_startup_script = templatefile("${path.module}/templates/startup.sh.tftpl", {
-    source_repo_url = var.source_repo_url
-    source_ref      = var.source_ref
-    worker_replicas = var.worker_replicas
-    event_id        = var.event_id
-    initial_seats   = var.initial_seats
+    source_repo_url          = var.source_repo_url
+    source_ref               = var.source_ref
+    node_role                = count.index == 0 ? "coordinator" : "worker"
+    redis_host               = local.redis_private_ip
+    worker_replicas_per_node = var.worker_replicas_per_node
+    event_id                 = var.event_id
+    initial_seats            = var.initial_seats
   })
 }

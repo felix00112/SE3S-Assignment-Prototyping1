@@ -195,6 +195,17 @@ Expected output is `PASS` for `user-1..3 -> reserved`, `user-4 -> sold_out`, and
 `user-1 -> duplicate`; the script exits non-zero if any case fails. It requires
 `api` and `redis` to be running.
 
+Test the per-user rate limiter (asserts that a burst gets throttled with `429`,
+that a `Retry-After` header is returned, that other users are unaffected, and
+that the bucket recovers after refill):
+
+```bash
+./scripts/rate-limit-test.sh
+```
+
+This one needs no worker or seat seeding, since rate limiting happens in the API
+before a booking is enqueued.
+
 ## How To Read This Repo
 
 The repository is intentionally split into two kinds of folders:

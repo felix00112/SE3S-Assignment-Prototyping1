@@ -1,0 +1,11 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: workers/cells/Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "6379"
+      EVENT_ID: "${EVENT_ID:-1}"
+      QUEUE_POP_TIMEOUT_SECONDS: "${QUEUE_POP_TIMEOUT_SECONDS:-5}"

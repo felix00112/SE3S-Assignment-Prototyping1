@@ -21,14 +21,23 @@ git checkout "${source_ref}"
 git pull --ff-only || true
 
 cat > .env <<ENV
+REDIS_HOST=${redis_host}
 EVENT_ID=${event_id}
 QUEUE_POP_TIMEOUT_SECONDS=5
 ENV
 
-docker-compose -f docker-compose.gcp.yml up -d --build --scale worker=${worker_replicas}
+if [ "${node_role}" = "coordinator" ]; then
+  docker-compose -f docker-compose.gcp.yml up -d --build --scale worker=${worker_replicas_per_node}
 
-until docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli ping; do
-  sleep 2
-done
+  until docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli ping; do
+    sleep 2
+  done
 
-docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli SET event:${event_id}:seats_available ${initial_seats}
+  docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli SET event:${event_id}:seats_available ${initial_seats}
+else
+  until docker run --rm redis:7-alpine redis-cli -h "${redis_host}" ping; do
+    sleep 2
+  done
+
+  docker-compose -f docker-compose.gcp-worker.yml up -d --build --scale worker=${worker_replicas_per_node}
+fi

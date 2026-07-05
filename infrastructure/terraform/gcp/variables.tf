@@ -22,7 +22,7 @@ variable "name_prefix" {
 }
 
 variable "machine_type" {
-  description = "Compute Engine machine type for the single-node MVP deployment."
+  description = "Compute Engine machine type used for every node in the MVP deployment."
   type        = string
   default     = "e2-medium"
 }
@@ -45,15 +45,21 @@ variable "source_ref" {
   default     = "main"
 }
 
-variable "worker_replicas" {
-  description = "Number of worker containers started with Docker Compose. Use 1, 3, or 5 for assignment comparison runs."
+variable "node_count" {
+  description = "Number of VM nodes in the assignment deployment. Use 1, 3, or 5."
   type        = number
   default     = 1
 
   validation {
-    condition     = contains([1, 3, 5], var.worker_replicas)
-    error_message = "worker_replicas should be one of 1, 3, or 5 for the planned experiment matrix."
+    condition     = contains([1, 3, 5], var.node_count)
+    error_message = "node_count must be one of 1, 3, or 5."
   }
+}
+
+variable "worker_replicas_per_node" {
+  description = "Number of worker containers started on each worker node. Keep this at 1 for node-count experiments."
+  type        = number
+  default     = 1
 }
 
 variable "event_id" {

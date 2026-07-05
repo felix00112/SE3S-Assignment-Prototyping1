@@ -6,17 +6,37 @@ It creates:
 
 - one custom VPC and subnet
 - firewall rules for SSH and the FastAPI port
-- one Ubuntu Compute Engine VM
-- Docker Compose on the VM
-- Redis, the FastAPI API, and one or more worker containers
+- `1`, `3`, or `5` Ubuntu Compute Engine VMs using the same machine type
+- Docker Compose on every VM
+- Redis and the FastAPI API on the coordinator node
+- worker containers on every node
 
-The goal is to de-risk GCP and Terraform early. This is not the final architecture with managed Redis, load balancing, or autoscaling.
+The goal is to keep the assignment deployment reproducible without jumping straight to managed Redis, load balancing, Kubernetes, or autoscaling.
 
 ## Why This Shape
 
-The current MVP bottleneck is the worker path that drains the Redis booking queue and runs the atomic Lua reservation script. The assignment allows separate `1` / `3` / `5` deployments and only requires scaling the component with the biggest effect on the chosen metric, so this setup scales only the `worker` Compose service.
+The current MVP bottleneck is the worker path that drains the Redis booking queue and runs the atomic Lua reservation script. The assignment asks for `1` / `3` / `5` node configurations, so this setup scales the number of VM nodes while keeping the public API on one coordinator node.
 
-Redis and the API stay single-instance on the same VM for now. That keeps network, IAM, image registry, and service orchestration work out of the first infrastructure milestone.
+The coordinator node runs Redis, the API, and one worker. Additional nodes run worker containers that connect to Redis over the private VPC IP. The Redis port is only opened to the deployment subnet by the Terraform firewall rule. This keeps the experiment focused on worker-side queue draining without requiring a load balancer yet.
+
+Node layout:
+
+```text
+1 node:
+  se3s-mvp-vm: API + Redis + worker
+
+3 nodes:
+  se3s-mvp-vm: API + Redis + worker
+  se3s-mvp-node-2: worker
+  se3s-mvp-node-3: worker
+
+5 nodes:
+  se3s-mvp-vm: API + Redis + worker
+  se3s-mvp-node-2: worker
+  se3s-mvp-node-3: worker
+  se3s-mvp-node-4: worker
+  se3s-mvp-node-5: worker
+```
 
 ## Prerequisites
 
@@ -37,11 +57,17 @@ cd infrastructure/terraform/gcp
 terraform init
 terraform apply \
   -var="project_id=YOUR_PROJECT_ID" \
-  -var="source_ref=workflow-mvp-booking" \
-  -var="worker_replicas=1"
+  -var="source_ref=gcp-terraform-mvp" \
+  -var="node_count=1"
 ```
 
-Use `worker_replicas=3` or `worker_replicas=5` for the other comparison deployments.
+Use `node_count=3` or `node_count=5` for the other comparison deployments.
+
+If you deployed the older single-VM Terraform version first, destroy it before applying this node-count version. That avoids Terraform replacing the original VM while you are still debugging:
+
+```bash
+terraform destroy -var="project_id=YOUR_PROJECT_ID"
+```
 
 After apply finishes, Terraform prints `api_url`.
 
@@ -76,6 +102,14 @@ cd /opt/se3s/app
 sudo docker-compose -f docker-compose.gcp.yml ps
 sudo docker-compose -f docker-compose.gcp.yml logs -f api
 sudo docker-compose -f docker-compose.gcp.yml logs -f worker
+```
+
+Worker nodes use `docker-compose.gcp-worker.yml`:
+
+```bash
+cd /opt/se3s/app
+sudo docker-compose -f docker-compose.gcp-worker.yml ps
+sudo docker-compose -f docker-compose.gcp-worker.yml logs -f worker
 ```
 
 ## Destroy

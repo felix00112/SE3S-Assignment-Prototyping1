@@ -173,7 +173,7 @@ The current `docker-compose.yml` starts the API and Redis. The worker is still r
 
 The first infrastructure milestone lives in [infrastructure/terraform/gcp/README.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/infrastructure/terraform/gcp/README.md:1).
 
-It creates a single Compute Engine VM that runs Redis, the FastAPI API, and scalable worker containers with Docker Compose. Use `worker_replicas=1`, `3`, or `5` to create the assignment comparison deployments while keeping the rest of the MVP intentionally simple.
+It creates `1`, `3`, or `5` Compute Engine VMs using the same machine type. The coordinator node runs Redis, the FastAPI API, and one worker; additional nodes run workers that drain the same Redis booking queue over the private VPC.
 
 ## How To Read This Repo
 

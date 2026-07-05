@@ -169,6 +169,32 @@ python -m workers.cells.worker
 
 The current `docker-compose.yml` starts the API and Redis. The worker is still run separately for the MVP.
 
+## Resetting And Smoke Testing
+
+Redis keeps all state between runs, so a new
+test run will otherwise inherit stale artifacts.
+
+Two helper scripts live in `scripts/`.
+
+Reset Redis to a clean, seeded state before each run (stop any running worker
+first). The optional argument is the number of seats (default 3):
+
+```bash
+./scripts/reset.sh        # flush + seed 3 seats
+./scripts/reset.sh 5      # flush + seed 5 seats
+```
+
+Run the end-to-end smoke test, which resets to 3 seats, starts a worker, runs
+the five canonical booking scenarios, and asserts each outcome:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+Expected output is `PASS` for `user-1..3 -> reserved`, `user-4 -> sold_out`, and
+`user-1 -> duplicate`; the script exits non-zero if any case fails. It requires
+`api` and `redis` to be running.
+
 ## How To Read This Repo
 
 The repository is intentionally split into two kinds of folders:
@@ -295,6 +321,7 @@ services/api
 workers/cells
 workers/cleanup              # optional
 infrastructure/redis
+scripts                      # reset + smoke-test helpers
 tests/k6
 tests/locust                 # optional
 docs/architecture

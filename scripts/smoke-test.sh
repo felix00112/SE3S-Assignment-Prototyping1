@@ -19,7 +19,10 @@ SCENARIO=(user-1 user-2 user-3 user-4 user-1)
 EXPECT=(reserved reserved reserved sold_out duplicate)
 
 echo "== reset to 3 seats =="
-scripts/reset.sh 3
+if ! scripts/reset.sh 3; then
+    echo "FAIL  reset step failed; aborting so results are not run against stale state" >&2
+    exit 1
+fi
 
 echo "== start worker =="
 "$PY" -m workers.cells.worker >/tmp/smoke-worker.log 2>&1 &

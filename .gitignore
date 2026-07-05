@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -211,3 +210,7 @@ __marimo__/
 
 # claude
 CLAUDE.md
+
+**/.terraform/
+*.tfstate
+*.tfstate.*

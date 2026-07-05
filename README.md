@@ -206,6 +206,12 @@ that the bucket recovers after refill):
 This one needs no worker or seat seeding, since rate limiting happens in the API
 before a booking is enqueued.
 
+## First GCP Terraform Deployment
+
+The first infrastructure milestone lives in [infrastructure/terraform/gcp/README.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/infrastructure/terraform/gcp/README.md:1).
+
+It creates a single Compute Engine VM that runs Redis, the FastAPI API, and scalable worker containers with Docker Compose. Use `worker_replicas=1`, `3`, or `5` to create the assignment comparison deployments while keeping the rest of the MVP intentionally simple.
+
 ## How To Read This Repo
 
 The repository is intentionally split into two kinds of folders:

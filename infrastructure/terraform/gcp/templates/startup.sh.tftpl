@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install -y ca-certificates curl git docker.io docker-compose
+
+systemctl enable --now docker
+
+mkdir -p /opt/se3s
+cd /opt/se3s
+
+if [ ! -d app/.git ]; then
+  git clone "${source_repo_url}" app
+fi
+
+cd /opt/se3s/app
+git fetch --all --tags
+git checkout "${source_ref}"
+git pull --ff-only || true
+
+cat > .env <<ENV
+EVENT_ID=${event_id}
+QUEUE_POP_TIMEOUT_SECONDS=5
+ENV
+
+docker-compose -f docker-compose.gcp.yml up -d --build --scale worker=${worker_replicas}
+
+until docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli ping; do
+  sleep 2
+done
+
+docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli SET event:${event_id}:seats_available ${initial_seats}

@@ -206,6 +206,15 @@ that the bucket recovers after refill):
 This one needs no worker or seat seeding, since rate limiting happens in the API
 before a booking is enqueued.
 
+Test the admission gate (asserts that a booking is admitted with room, that a
+booking is rejected with `503` once the queue is filled to capacity, that a
+`Retry-After` header is returned, and that bookings are admitted again after the
+queue drains):
+
+```bash
+./scripts/admission-gate-test.sh
+```
+
 ## How To Read This Repo
 
 The repository is intentionally split into two kinds of folders:

@@ -1,31 +1,29 @@
 import os
-import psycopg2
+import json
+from uuid import uuid4
+
 import redis
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import psycopg2.extras
+
+from .redis_keys import (
+    booking_queue_key,
+    reservation_event_key,
+    reservation_status_key,
+    reservation_user_key,
+)
 
 app = FastAPI()
 
 redis_client = redis.Redis(
     host=os.getenv("REDIS_HOST", "redis"),
     port=6379,
-    decode_responses=True
+    decode_responses=True,
 )
 
 
-class EventCreate(BaseModel):
-    event_type: str
-    payload: dict | None = None
-
-
-def get_connection():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        database=os.getenv("POSTGRES_DB", "scaling_app"),
-        user=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD", "postgres"),
-    )
+class BookingRequest(BaseModel):
+    user_id: str
 
 
 @app.get("/")
@@ -37,65 +35,55 @@ def root():
 def health():
     return {"status": "healthy"}
 
+
 @app.get("/redis-test")
 def redis_test():
     count = redis_client.incr("test_counter")
 
     return {
         "message": "Redis works",
-        "counter": count
+        "counter": count,
     }
 
-@app.post("/events")
-def create_event(event: EventCreate):
-    conn = get_connection()
-    cur = conn.cursor()
 
-    cur.execute(
-        """
-        INSERT INTO app_events (event_type, payload)
-        VALUES (%s, %s)
-        RETURNING id, event_type, payload, created_at;
-        """,
-        (event.event_type, psycopg2.extras.Json(event.payload)),
-    )
+@app.post("/events/{event_id}/book")
+def book_event(event_id: int, booking_request: BookingRequest):
+    reservation_id = str(uuid4())
 
-    row = cur.fetchone()
-    conn.commit()
-    cur.close()
-    conn.close()
+    queue_payload = {
+        "reservation_id": reservation_id,
+        "event_id": event_id,
+        "user_id": booking_request.user_id,
+    }
+    queue_payload_json = json.dumps(queue_payload)
+
+    pipeline = redis_client.pipeline(transaction=True)
+    pipeline.set(reservation_status_key(reservation_id), "pending")
+    pipeline.set(reservation_event_key(reservation_id), event_id)
+    pipeline.set(reservation_user_key(reservation_id), booking_request.user_id)
+    pipeline.rpush(booking_queue_key(event_id), queue_payload_json)
+    pipeline.execute()
 
     return {
-        "id": row[0],
-        "event_type": row[1],
-        "payload": row[2],
-        "created_at": row[3],
+        "reservation_id": reservation_id,
+        "event_id": event_id,
+        "user_id": booking_request.user_id,
+        "status": "pending",
     }
 
-
-@app.get("/events")
-def get_events():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT id, event_type, payload, created_at
-        FROM app_events
-        ORDER BY id DESC;
-        """
-    )
-
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    return [
-        {
-            "id": row[0],
-            "event_type": row[1],
-            "payload": row[2],
-            "created_at": row[3],
-        }
-        for row in rows
-    ]
+@app.get("/reservations/{reservation_id}")
+def get_reservation(reservation_id: str):
+    reservation_status = redis_client.get(reservation_status_key(reservation_id))
+    reservation_event = redis_client.get(reservation_event_key(reservation_id))
+    reservation_user = redis_client.get(reservation_user_key(reservation_id))
+    if reservation_status is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Reservation not found"
+        )
+    return {
+        "reservation_id": reservation_id,
+        "status": reservation_status,
+        "event_id": reservation_event,
+        "user_id": reservation_user,
+    }

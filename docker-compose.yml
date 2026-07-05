@@ -13,6 +13,7 @@ services:
       REDIS_HOST: redis
       RATE_LIMIT_CAPACITY: "5"
       RATE_LIMIT_REFILL_RATE: "1"
+      ADMISSION_MAX_QUEUE_LENGTH: "100"
 
   redis:
     image: redis:latest

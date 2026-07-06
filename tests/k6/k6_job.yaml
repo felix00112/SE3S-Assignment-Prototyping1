@@ -8,7 +8,7 @@ spec:
       containers:
         - name: k6
           image: grafana/k6:latest
-          command: ["k6", "run", "/scripts/book-event.js"]
+          command: ["k6", "run", "/scripts/constant_load.js"]
           volumeMounts:
             - name: scripts
               mountPath: /scripts

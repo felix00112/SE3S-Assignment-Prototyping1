@@ -19,6 +19,7 @@ docker compose run --rm k6 run {test-name.js}
 ## Running in the cloud
 
 + Once the service has up and running check the external IP and change it in the `k6_config.yaml`
++ Define which test you want to run in `k6-job.yaml`
 ```bash
 kubectl apply -f k6-config.yaml
 kubectl apply -f k6-job.yaml

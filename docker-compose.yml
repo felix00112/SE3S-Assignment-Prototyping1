@@ -5,14 +5,25 @@ services:
     build:
       context: .
       dockerfile: services/api/Dockerfile
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       - redis
     environment:
       REDIS_HOST: redis
+    deploy:
+      replicas: 1 # Change for more replicas
 
   redis:
     image: redis:latest
     ports:
       - "6379:6379"
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api

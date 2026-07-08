@@ -12,7 +12,7 @@ from pathlib import Path
 from .redis_keys import rate_limit_user_key
 
 DEFAULT_LUA_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[2]
+    Path(__file__).resolve().parents[3]
     / "infrastructure"
     / "redis"
     / "rate-limiter"

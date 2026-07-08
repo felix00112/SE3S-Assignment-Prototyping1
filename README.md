@@ -211,6 +211,15 @@ The first infrastructure milestone lives in [infrastructure/terraform/gcp/README
 
 It creates `1`, `3`, or `5` Compute Engine VMs using the same machine type. The coordinator node runs Redis, the FastAPI API, and one worker; additional nodes run workers that drain the same Redis booking queue over the private VPC.
 
+Test the admission gate (asserts that a booking is admitted with room, that a
+booking is rejected with `503` once the queue is filled to capacity, that a
+`Retry-After` header is returned, and that bookings are admitted again after the
+queue drains):
+
+```bash
+./scripts/admission-gate-test.sh
+```
+
 ## How To Read This Repo
 
 The repository is intentionally split into two kinds of folders:

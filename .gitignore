@@ -18,6 +18,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!tests/k6/lib/
+!tests/k6/lib/config.js
 parts/
 sdist/
 var/

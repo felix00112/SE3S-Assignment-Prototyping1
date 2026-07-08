@@ -34,10 +34,30 @@ if [ "${node_role}" = "coordinator" ]; then
   done
 
   docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli SET event:${event_id}:seats_available ${initial_seats}
-else
+elif [ "${node_role}" = "worker" ]; then
   until docker run --rm redis:7-alpine redis-cli -h "${redis_host}" ping; do
     sleep 2
   done
 
   docker-compose -f docker-compose.gcp-worker.yml up -d --build --scale worker=${worker_replicas_per_node}
+else
+  cat > /usr/local/bin/run-k6.sh <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCENARIO="$${1:-constant_load.js}"
+
+cd /opt/se3s/app
+
+sudo docker run --rm \
+  -e BASE_URL="$${BASE_URL:-}" \
+  -e EVENT_ID="$${EVENT_ID:-1}" \
+  -e K6_VUS="$${K6_VUS:-}" \
+  -e K6_DURATION="$${K6_DURATION:-}" \
+  -e K6_STAGES="$${K6_STAGES:-}" \
+  -v /opt/se3s/app/tests/k6:/scripts:ro \
+  grafana/k6:latest run "/scripts/$${SCENARIO}"
+SCRIPT
+
+  chmod +x /usr/local/bin/run-k6.sh
 fi

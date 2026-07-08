@@ -25,3 +25,13 @@ output "worker_ssh_commands" {
     "gcloud compute ssh ${instance.name} --zone ${var.zone} --project ${var.project_id}"
   ]
 }
+
+output "load_generator_instance_name" {
+  description = "Compute Engine instance name for the optional k6 load-generator VM."
+  value       = var.load_generator_enabled ? google_compute_instance.load_generator[0].name : null
+}
+
+output "load_generator_ssh_command" {
+  description = "SSH command for the optional k6 load-generator VM."
+  value       = var.load_generator_enabled ? "gcloud compute ssh ${google_compute_instance.load_generator[0].name} --zone ${var.zone} --project ${var.project_id}" : null
+}

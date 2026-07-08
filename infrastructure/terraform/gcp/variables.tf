@@ -27,6 +27,12 @@ variable "machine_type" {
   default     = "e2-medium"
 }
 
+variable "load_generator_machine_type" {
+  description = "Compute Engine machine type used for the optional k6 load-generator VM."
+  type        = string
+  default     = "e2-standard-2"
+}
+
 variable "boot_disk_size_gb" {
   description = "Boot disk size for Docker images, containers, and Redis data."
   type        = number
@@ -72,6 +78,12 @@ variable "initial_seats" {
   description = "Initial Redis seat counter seeded by the startup script."
   type        = number
   default     = 100
+}
+
+variable "load_generator_enabled" {
+  description = "Whether to create a dedicated VM for running k6 load tests from inside GCP."
+  type        = bool
+  default     = false
 }
 
 variable "api_source_ranges" {

@@ -21,7 +21,7 @@ from ..redis_keys import (
 )
 
 DEFAULT_LUA_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[4]
+    Path(__file__).resolve().parents[3]
     / "infrastructure"
     / "redis"
     / "admission-gate"

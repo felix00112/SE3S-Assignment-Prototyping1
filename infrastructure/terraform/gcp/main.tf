@@ -106,3 +106,41 @@ resource "google_compute_instance" "mvp" {
     initial_seats            = var.initial_seats
   })
 }
+
+resource "google_compute_instance" "load_generator" {
+  count        = var.load_generator_enabled ? 1 : 0
+  name         = "${var.name_prefix}-loadgen"
+  machine_type = var.load_generator_machine_type
+  zone         = var.zone
+  tags         = ["${var.name_prefix}-ssh"]
+  labels = merge(local.labels, {
+    role = "load-generator"
+  })
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      size  = var.boot_disk_size_gb
+      type  = "pd-balanced"
+    }
+  }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.mvp.id
+    network_ip = cidrhost(local.subnet_cidr, 20)
+
+    access_config {
+      # Ephemeral public IP for a short-lived assignment prototype.
+    }
+  }
+
+  metadata_startup_script = templatefile("${path.module}/templates/startup.sh.tftpl", {
+    source_repo_url          = var.source_repo_url
+    source_ref               = var.source_ref
+    node_role                = "load-generator"
+    redis_host               = local.redis_private_ip
+    worker_replicas_per_node = var.worker_replicas_per_node
+    event_id                 = var.event_id
+    initial_seats            = var.initial_seats
+  })
+}

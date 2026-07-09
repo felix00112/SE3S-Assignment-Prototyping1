@@ -205,6 +205,11 @@ that the bucket recovers after refill):
 
 This one needs no worker or seat seeding, since rate limiting happens in the API
 before a booking is enqueued.
+## First GCP Terraform Deployment
+
+The first infrastructure milestone lives in [infrastructure/terraform/gcp/README.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/infrastructure/terraform/gcp/README.md:1).
+
+It creates `1`, `3`, or `5` Compute Engine VMs using the same machine type. The coordinator node runs Redis, the FastAPI API, and one worker; additional nodes run workers that drain the same Redis booking queue over the private VPC.
 
 Test the admission gate (asserts that a booking is admitted with room, that a
 booking is rejected with `503` once the queue is filled to capacity, that a

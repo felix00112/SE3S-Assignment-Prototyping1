@@ -34,12 +34,14 @@ if [ "${node_role}" = "coordinator" ]; then
   done
 
   docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli SET event:${event_id}:seats_available ${initial_seats}
-elif [ "${node_role}" = "worker" ]; then
+elif [ "${node_role}" = "api" ]; then
+  # Stateless API replica: wait for the coordinator's Redis to answer, then
+  # bring up an API-only container that points at it.
   until docker run --rm redis:7-alpine redis-cli -h "${redis_host}" ping; do
     sleep 2
   done
 
-  docker-compose -f docker-compose.gcp-worker.yml up -d --build --scale worker=${worker_replicas_per_node}
+  docker-compose -f docker-compose.gcp-api.yml up -d --build
 else
   cat > /usr/local/bin/run-k6.sh <<'SCRIPT'
 #!/usr/bin/env bash

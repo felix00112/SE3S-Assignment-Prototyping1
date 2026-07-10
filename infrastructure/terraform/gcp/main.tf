@@ -68,15 +68,16 @@ resource "google_compute_firewall" "internal" {
 
 resource "google_compute_instance" "mvp" {
   count        = var.node_count
-  name         = count.index == 0 ? "${var.name_prefix}-vm" : "${var.name_prefix}-node-${count.index + 1}"
+  name         = count.index == 0 ? "${var.name_prefix}-vm" : "${var.name_prefix}-api-${count.index + 1}"
   machine_type = var.machine_type
-  zone         = var.zone
+  # Every node serves the API (so it needs the -api tag). Node 0 additionally
+  # hosts the single Redis + worker, so it also carries the -redis tag.
   tags = concat(
-    ["${var.name_prefix}-ssh"],
-    count.index == 0 ? ["${var.name_prefix}-api", "${var.name_prefix}-redis"] : []
+    ["${var.name_prefix}-ssh", "${var.name_prefix}-api"],
+    count.index == 0 ? ["${var.name_prefix}-redis"] : []
   )
   labels = merge(local.labels, {
-    role = count.index == 0 ? "coordinator" : "worker"
+    role = count.index == 0 ? "coordinator" : "api"
   })
 
   boot_disk {
@@ -99,7 +100,7 @@ resource "google_compute_instance" "mvp" {
   metadata_startup_script = templatefile("${path.module}/templates/startup.sh.tftpl", {
     source_repo_url          = var.source_repo_url
     source_ref               = var.source_ref
-    node_role                = count.index == 0 ? "coordinator" : "worker"
+    node_role                = count.index == 0 ? "coordinator" : "api"
     redis_host               = local.redis_private_ip
     worker_replicas_per_node = var.worker_replicas_per_node
     event_id                 = var.event_id

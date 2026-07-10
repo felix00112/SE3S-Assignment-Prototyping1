@@ -8,17 +8,19 @@ It creates:
 - firewall rules for SSH and the FastAPI port
 - `1`, `3`, or `5` Ubuntu Compute Engine VMs using the same machine type
 - Docker Compose on every VM
-- Redis and the FastAPI API on the coordinator node
-- worker containers on every node
+- Redis and the single worker on the coordinator node (node 0)
+- a FastAPI API replica on **every** node (the tier that scales horizontally)
 - an optional dedicated `k6` load-generator VM for running tests from inside GCP
 
-The goal is to keep the assignment deployment reproducible without jumping straight to managed Redis, load balancing, Kubernetes, or autoscaling.
+The goal is to keep the assignment deployment reproducible without jumping straight to managed Redis, Kubernetes, or autoscaling.
 
 ## Why This Shape
 
-The current MVP bottleneck is the worker path that drains the Redis booking queue and runs the atomic Lua reservation script. The assignment asks for `1` / `3` / `5` node configurations, so this setup scales the number of VM nodes while keeping the public API on one coordinator node.
+The API is the first component to bottleneck under load, so this setup scales the **API tier** horizontally while keeping the stateful parts singular. The assignment asks for `1` / `3` / `5` node configurations, all using the same instance type — so `node_count` is the number of API-serving VMs, and the single-node config runs the whole app on one VM.
 
-The coordinator node runs Redis, the API, and one worker. Additional nodes run worker containers that connect to Redis over the private VPC IP. The Redis port is only opened to the deployment subnet by the Terraform firewall rule. This keeps the experiment focused on worker-side queue draining without requiring a load balancer yet.
+Node 0 (the coordinator) hosts the one Redis, the one worker, and an API replica. Nodes 1..N-1 are **stateless API-only replicas** that connect to node 0's Redis over the private VPC IP. Redis is only opened to the deployment subnet by the Terraform firewall rule. There is one shared queue and one shared seat counter, so correctness (the atomic Lua reserve) is preserved no matter how many API replicas run.
+
+A load balancer is **not created yet** (planned next). Until then, `api_url` targets node 0's API and each replica is also reachable at its own public IP (see the `api_urls` output).
 
 If `load_generator_enabled=true`, Terraform also creates a separate VM that installs Docker, clones this repository, and exposes a `run-k6.sh` helper for the `tests/k6` scenarios.
 
@@ -29,16 +31,16 @@ Node layout:
   se3s-mvp-vm: API + Redis + worker
 
 3 nodes:
-  se3s-mvp-vm: API + Redis + worker
-  se3s-mvp-node-2: worker
-  se3s-mvp-node-3: worker
+  se3s-mvp-vm:    API + Redis + worker
+  se3s-mvp-api-2: API   -> redis@coordinator
+  se3s-mvp-api-3: API   -> redis@coordinator
 
 5 nodes:
-  se3s-mvp-vm: API + Redis + worker
-  se3s-mvp-node-2: worker
-  se3s-mvp-node-3: worker
-  se3s-mvp-node-4: worker
-  se3s-mvp-node-5: worker
+  se3s-mvp-vm:    API + Redis + worker
+  se3s-mvp-api-2: API   -> redis@coordinator
+  se3s-mvp-api-3: API   -> redis@coordinator
+  se3s-mvp-api-4: API   -> redis@coordinator
+  se3s-mvp-api-5: API   -> redis@coordinator
 ```
 
 ## Prerequisites
@@ -122,12 +124,12 @@ sudo docker-compose -f docker-compose.gcp.yml logs -f api
 sudo docker-compose -f docker-compose.gcp.yml logs -f worker
 ```
 
-Worker nodes use `docker-compose.gcp-worker.yml`:
+API replica nodes (index >= 1) use `docker-compose.gcp-api.yml`:
 
 ```bash
 cd /opt/se3s/app
-sudo docker-compose -f docker-compose.gcp-worker.yml ps
-sudo docker-compose -f docker-compose.gcp-worker.yml logs -f worker
+sudo docker-compose -f docker-compose.gcp-api.yml ps
+sudo docker-compose -f docker-compose.gcp-api.yml logs -f api
 ```
 
 If the optional load-generator is enabled:

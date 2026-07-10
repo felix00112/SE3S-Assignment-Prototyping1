@@ -52,7 +52,7 @@ variable "source_ref" {
 }
 
 variable "node_count" {
-  description = "Number of VM nodes in the assignment deployment. Use 1, 3, or 5."
+  description = "Total VM nodes = number of API-serving replicas. Use 1, 3, or 5 (the assignment's single-node / 3-node / 5-node configs, all the same instance type). Node 0 also hosts the single Redis + worker; nodes 1..N-1 are stateless API-only replicas pointing at node 0's Redis."
   type        = number
   default     = 1
 
@@ -63,7 +63,7 @@ variable "node_count" {
 }
 
 variable "worker_replicas_per_node" {
-  description = "Number of worker containers started on each worker node. Keep this at 1 for node-count experiments."
+  description = "Number of worker containers on the coordinator node (node 0). Keep this at 1 for the node-count experiments (only the API tier scales)."
   type        = number
   default     = 1
 }

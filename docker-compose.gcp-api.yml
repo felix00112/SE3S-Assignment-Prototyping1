@@ -1,0 +1,15 @@
+services:
+  # Stateless API replica for the horizontal-scaling nodes (node index >= 1).
+  # It runs no Redis and no worker of its own: it points REDIS_HOST at the
+  # coordinator node's Redis (set via the .env file the startup script writes),
+  # so every replica shares the single queue + seat counter.
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "6379"

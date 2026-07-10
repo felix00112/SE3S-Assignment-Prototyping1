@@ -23,7 +23,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       EVENT_ID: "${EVENT_ID:-1}"
-      QUEUE_POP_TIMEOUT_SECONDS: "${QUEUE_POP_TIMEOUT_SECONDS:-5}"
+      WORKER_BATCH_SIZE: "${WORKER_BATCH_SIZE:-100}"
+      WORKER_INTERVAL_SECONDS: "${WORKER_INTERVAL_SECONDS:-1.0}"
 
   redis:
     image: redis:7-alpine

@@ -13,6 +13,34 @@ Make sure these are true first:
 
 The GCP VMs clone from GitHub during startup, so local-only changes are not enough.
 
+## Quick Path (wrapper scripts)
+
+Three parameterized helpers wrap the raw Terraform/gcloud commands:
+
+```bash
+scripts/gcp/deploy.sh   -p PROJECT_ID -n 3            # deploy a 3-node cluster + load generator
+scripts/gcp/run-tests.sh -p PROJECT_ID constant_load # run a scenario, fetch reports, print headline metrics
+scripts/gcp/destroy.sh  -p PROJECT_ID                # tear everything down
+```
+
+`deploy.sh` flags: `-n` node_count (1/3/5), `-m` machine_type (raise for vertical
+scaling), `-s` initial_seats, `-r` source_ref (defaults to your current branch),
+`-g` load generator on/off. `run-tests.sh` accepts the scenario name and passes
+through `K6_VUS` / `K6_DURATION` / `K6_STAGES`.
+
+### Reports & plots
+
+`run-tests.sh` pulls two files back into `results/<timestamp>-<scenario>/k6-out/`:
+
+- `raw-*.csv` — per-sample **time series** (throughput, latency, VUs over time, and
+  per-request `status`) — feed this straight into your plotting tool.
+- `summary-*.json` — end-of-run aggregates, including the `accepted`,
+  `rejected_rate_limited` (429) and `rejected_admission` (503) counters.
+
+`scripts/gcp/summarize.py <summary.json>` prints the headline numbers (throughput,
+latency percentiles, users, accepted/rejected). The rest of this document is the
+manual, step-by-step version of the same flow.
+
 ## 1. Deploy The Environment
 
 From the repo root:
@@ -32,7 +60,53 @@ Notes:
 
 - `source_ref` should be a pushed branch name or a commit SHA
 - `initial_seats=100000` avoids an immediate `sold_out` result during throughput tests
-- `node_count=1` is the simplest baseline; use `3` or `5` for comparison runs
+- **`node_count` sets how many API nodes you get** — it must be `1`, `3`, or `5`
+  (the assignment's single-node / 3-node / 5-node configs, all one instance type).
+  Node 0 hosts Redis + the single worker + the Nginx load balancer; nodes 1..N-1
+  are stateless API-only replicas. See "Choosing The Cluster Size" below.
+- `api_url` resolves to the **Nginx load balancer on node 0 (port 80)**, which
+  distributes across all API replicas — always send load here, not at a single node.
+
+## Choosing The Cluster Size (node_count)
+
+`node_count` is the single knob for horizontal scaling — the number of API-serving
+VMs. Change it per deploy:
+
+```bash
+-var="node_count=1"   # config (a): 1 node  (LB + API + Redis + worker on one VM)
+-var="node_count=3"   # config (b): 3 nodes (coordinator + 2 API replicas)
+-var="node_count=5"   # config (c): 5 nodes (coordinator + 4 API replicas)
+```
+
+To vertically scale instead (assignment bonus 2d), keep `node_count` fixed and raise
+the machine size, e.g. `-var="machine_type=e2-standard-2"`.
+
+### Scaling comparison workflow (a / b / c)
+
+Each configuration is a separate deploy → measure → destroy cycle. Run the same load
+test at each size and record the throughput (`http_reqs`/s from the k6 summary):
+
+```bash
+for N in 1 3 5; do
+  terraform -chdir=infrastructure/terraform/gcp apply -auto-approve \
+    -var="project_id=YOUR_PROJECT_ID" \
+    -var="source_ref=YOUR_BRANCH_OR_COMMIT" \
+    -var="node_count=$N" \
+    -var="load_generator_enabled=true" \
+    -var="initial_seats=1000000"
+
+  sleep 180   # let all nodes boot and the LB pick up its backends
+
+  curl "$(terraform -chdir=infrastructure/terraform/gcp output -raw api_url)/health"
+  scripts/run-gcp-load-test.sh constant_load | tee "results-$N-nodes.txt"   # saves the k6 summary per size
+
+  terraform -chdir=infrastructure/terraform/gcp destroy -auto-approve \
+    -var="project_id=YOUR_PROJECT_ID"
+done
+```
+
+Throughput should rise from 1 → 3 → 5 API nodes until the single worker / Redis
+becomes the limiting component — that plateau is your scalability-limitations point.
 
 ## 2. Verify The API Before Load Testing
 

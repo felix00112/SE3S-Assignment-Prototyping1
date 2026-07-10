@@ -58,6 +58,23 @@ fi
 OUTDIR="${OUTDIR:-$ROOT/results/$(date +%Y%m%d-%H%M%S)-${SCENARIO%.js}}"
 mkdir -p "$OUTDIR"
 
+# Wait until the load balancer actually serves before starting k6. Without this,
+# a test launched too soon after deploy records a burst of "connection refused"
+# (status 0) while Nginx is still booting, which poisons the throughput/latency.
+READY_TIMEOUT="${READY_TIMEOUT:-240}"
+echo ">> Waiting for $api_url to be ready (up to ${READY_TIMEOUT}s)..."
+ready=0
+for _ in $(seq 1 $((READY_TIMEOUT / 2))); do
+  if curl -sf --max-time 3 "$api_url/health" >/dev/null 2>&1; then ready=1; break; fi
+  sleep 2
+done
+if [ "$ready" != 1 ]; then
+  echo "ERROR: $api_url did not become ready within ${READY_TIMEOUT}s." >&2
+  echo "       Check the coordinator startup: gcloud compute ssh se3s-mvp-vm ..." >&2
+  exit 1
+fi
+echo ">> Load balancer is ready."
+
 # Forward BASE_URL (the LB) + any K6_* load-shape overrides to the remote helper.
 env_assignments=("BASE_URL='$api_url'" "EVENT_ID='${EVENT_ID:-1}'")
 for v in K6_VUS K6_DURATION K6_STAGES; do

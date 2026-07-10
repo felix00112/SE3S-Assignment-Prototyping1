@@ -1,3 +1,4 @@
+import math
 import os
 import json
 from uuid import uuid4
@@ -6,6 +7,12 @@ import redis
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .admission_gate import (
+    AdmissionGate,
+    ADMISSION_ENABLED,
+    ADMISSION_RETRY_AFTER_SECONDS,
+)
+from .rate_limiter import RateLimiter, RATE_LIMIT_ENABLED
 from .redis_keys import (
     booking_queue_key,
     reservation_event_key,
@@ -20,6 +27,9 @@ redis_client = redis.Redis(
     port=6379,
     decode_responses=True,
 )
+
+rate_limiter = RateLimiter(redis_client) if RATE_LIMIT_ENABLED else None
+admission_gate = AdmissionGate(redis_client) if ADMISSION_ENABLED else None
 
 
 class BookingRequest(BaseModel):
@@ -48,6 +58,15 @@ def redis_test():
 
 @app.post("/events/{event_id}/book")
 def book_event(event_id: int, booking_request: BookingRequest):
+    if rate_limiter is not None:
+        allowed, _remaining, retry_after_ms = rate_limiter.check(booking_request.user_id)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": str(math.ceil(retry_after_ms / 1000))},
+            )
+
     reservation_id = str(uuid4())
 
     queue_payload = {
@@ -57,12 +76,23 @@ def book_event(event_id: int, booking_request: BookingRequest):
     }
     queue_payload_json = json.dumps(queue_payload)
 
-    pipeline = redis_client.pipeline(transaction=True)
-    pipeline.set(reservation_status_key(reservation_id), "pending")
-    pipeline.set(reservation_event_key(reservation_id), event_id)
-    pipeline.set(reservation_user_key(reservation_id), booking_request.user_id)
-    pipeline.rpush(booking_queue_key(event_id), queue_payload_json)
-    pipeline.execute()
+    if admission_gate is not None:
+        admitted, _queue_length = admission_gate.admit(
+            reservation_id, event_id, booking_request.user_id, queue_payload_json
+        )
+        if not admitted:
+            raise HTTPException(
+                status_code=503,
+                detail="Booking queue full",
+                headers={"Retry-After": str(ADMISSION_RETRY_AFTER_SECONDS)},
+            )
+    else:
+        pipeline = redis_client.pipeline(transaction=True)
+        pipeline.set(reservation_status_key(reservation_id), "pending")
+        pipeline.set(reservation_event_key(reservation_id), event_id)
+        pipeline.set(reservation_user_key(reservation_id), booking_request.user_id)
+        pipeline.rpush(booking_queue_key(event_id), queue_payload_json)
+        pipeline.execute()
 
     return {
         "reservation_id": reservation_id,

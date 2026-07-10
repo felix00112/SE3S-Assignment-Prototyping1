@@ -12,6 +12,7 @@ from shared.redis_keys import (
     event_key,
     event_seats_available_key,
     event_seats_total_key,
+    rate_limit_user_key,
     reservation_event_key,
     reservation_key,
     reservation_status_key,

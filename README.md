@@ -169,6 +169,63 @@ python -m workers.cells.worker
 
 The current `docker-compose.yml` starts the API and Redis. The worker is still run separately for the MVP.
 
+## Resetting And Smoke Testing
+
+Redis keeps all state between runs, so a new
+test run will otherwise inherit stale artifacts.
+
+Two helper scripts live in `scripts/`.
+
+Reset Redis to a clean, seeded state before each run (stop any running worker
+first). The optional argument is the number of seats (default 3):
+
+```bash
+./scripts/reset.sh        # flush + seed 3 seats
+./scripts/reset.sh 5      # flush + seed 5 seats
+```
+
+Run the end-to-end smoke test, which resets to 3 seats, starts a worker, runs
+the five canonical booking scenarios, and asserts each outcome:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+Expected output is `PASS` for `user-1..3 -> reserved`, `user-4 -> sold_out`, and
+`user-1 -> duplicate`; the script exits non-zero if any case fails. It requires
+`api` and `redis` to be running.
+
+Test the per-user rate limiter (asserts that a burst gets throttled with `429`,
+that a `Retry-After` header is returned, that other users are unaffected, and
+that the bucket recovers after refill):
+
+```bash
+./scripts/rate-limit-test.sh
+```
+
+This one needs no worker or seat seeding, since rate limiting happens in the API
+before a booking is enqueued.
+## First GCP Terraform Deployment
+
+The first infrastructure milestone lives in [infrastructure/terraform/gcp/README.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/infrastructure/terraform/gcp/README.md:1).
+
+It creates `1`, `3`, or `5` Compute Engine VMs using the same machine type. The coordinator node runs Redis, the FastAPI API, and one worker; additional nodes run workers that drain the same Redis booking queue over the private VPC.
+
+Test the admission gate (asserts that a booking is admitted with room, that a
+booking is rejected with `503` once the queue is filled to capacity, that a
+`Retry-After` header is returned, and that bookings are admitted again after the
+queue drains):
+
+```bash
+./scripts/admission-gate-test.sh
+```
+
+## First GCP Terraform Deployment
+
+The first infrastructure milestone lives in [infrastructure/terraform/gcp/README.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/infrastructure/terraform/gcp/README.md:1).
+
+It creates `1`, `3`, or `5` Compute Engine VMs using the same machine type. The coordinator node runs Redis, the FastAPI API, and one worker; additional nodes run workers that drain the same Redis booking queue over the private VPC.
+
 ## How To Read This Repo
 
 The repository is intentionally split into two kinds of folders:
@@ -295,6 +352,7 @@ services/api
 workers/cells
 workers/cleanup              # optional
 infrastructure/redis
+scripts                      # reset + smoke-test helpers
 tests/k6
 tests/locust                 # optional
 docs/architecture

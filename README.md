@@ -128,7 +128,7 @@ the atomic reservation stays correct no matter how many API replicas run.
 
 ```mermaid
 flowchart TD
-    A["k6 / Locust<br/>load generator"] --> B["Nginx Load Balancer"]
+    A["Client / k6 Load Generator"] --> B["Nginx Load Balancer"]
 
     subgraph APITIER["Stateless API tier — scales horizontally (1 / 3 / 5 nodes)"]
         C1["FastAPI API 1"]
@@ -159,6 +159,7 @@ flowchart TD
     M -.-> J
 
     L --> N["Status Endpoint"]
+    A -.->|"polls GET /reservations"| N
 ```
 
 ## Running The MVP

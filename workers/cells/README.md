@@ -24,9 +24,18 @@ Constant-work tuning knobs:
 - `WORKER_INTERVAL_SECONDS`
   - cycle duration target in seconds
   - default: `1.0`
+- `WORKER_SYNTHETIC_DUMMY_MODE`
+  - if set to `1`, empty slots run a Redis Lua dummy path instead of a pure no-op
+  - default: `0`
 
 Example:
 
 ```bash
 WORKER_BATCH_SIZE=5 WORKER_INTERVAL_SECONDS=2 python -m workers.cells.worker
+```
+
+Example with synthetic dummy slots:
+
+```bash
+WORKER_BATCH_SIZE=5 WORKER_INTERVAL_SECONDS=2 WORKER_SYNTHETIC_DUMMY_MODE=1 python -m workers.cells.worker
 ```

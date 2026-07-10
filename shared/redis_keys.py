@@ -25,6 +25,10 @@ def reserved_users_key(event_id: int = DEFAULT_EVENT_ID) -> str:
     return event_key(event_id, "reserved_users")
 
 
+def dummy_slots_key(event_id: int = DEFAULT_EVENT_ID) -> str:
+    return event_key(event_id, "dummy_slots")
+
+
 def reservation_status_key(reservation_id: str) -> str:
     return reservation_key(reservation_id, "status")
 

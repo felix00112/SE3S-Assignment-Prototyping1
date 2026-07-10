@@ -8,6 +8,7 @@ import redis
 
 from shared.redis_keys import (
     booking_queue_key,
+    dummy_slots_key,
     event_seats_available_key,
     reservation_status_key,
     reserved_users_key,
@@ -27,10 +28,19 @@ DEFAULT_LUA_SCRIPT_PATH = (
     Path(__file__).resolve().parents[2] / "infrastructure" / "redis" / "lua" / "reserve_atomic.lua"
 )
 LUA_SCRIPT_PATH = Path(os.getenv("RESERVE_TICKET_LUA_PATH", DEFAULT_LUA_SCRIPT_PATH))
+DEFAULT_DUMMY_LUA_SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2] / "infrastructure" / "redis" / "lua" / "dummy_slot.lua"
+)
+DUMMY_LUA_SCRIPT_PATH = Path(os.getenv("DUMMY_SLOT_LUA_PATH", DEFAULT_DUMMY_LUA_SCRIPT_PATH))
 
 
 def load_reserve_ticket_script(redis_client):
     script = LUA_SCRIPT_PATH.read_text()
+    return redis_client.register_script(script)
+
+
+def load_dummy_slot_script(redis_client):
+    script = DUMMY_LUA_SCRIPT_PATH.read_text()
     return redis_client.register_script(script)
 
 
@@ -60,7 +70,24 @@ def process_real_reservation(reserve_ticket, reservation: dict, default_event_id
     return reservation["status"]
 
 
-def process_queue_slot(client: redis.Redis, queue_key: str, reserve_ticket, default_event_id: int) -> bool:
+def process_dummy_slot(run_dummy_slot, event_id: int) -> None:
+    run_dummy_slot(
+        keys=[
+            event_seats_available_key(event_id),
+            reserved_users_key(event_id),
+            dummy_slots_key(event_id),
+        ]
+    )
+
+
+def process_queue_slot(
+    client: redis.Redis,
+    queue_key: str,
+    reserve_ticket,
+    run_dummy_slot,
+    default_event_id: int,
+    synthetic_dummy_mode: bool,
+) -> bool:
     try:
         item = client.lpop(queue_key)
     except redis.RedisError as exc:
@@ -68,6 +95,8 @@ def process_queue_slot(client: redis.Redis, queue_key: str, reserve_ticket, defa
         raise
 
     if item is None:
+        if synthetic_dummy_mode:
+            process_dummy_slot(run_dummy_slot, default_event_id)
         return False
 
     try:
@@ -84,11 +113,14 @@ def main() -> int:
     queue_key = os.getenv("BOOKING_QUEUE_KEY", booking_queue_key(event_id))
     batch_size = int(os.getenv("WORKER_BATCH_SIZE", "100"))
     interval_seconds = float(os.getenv("WORKER_INTERVAL_SECONDS", "1.0"))
+    synthetic_dummy_mode = os.getenv("WORKER_SYNTHETIC_DUMMY_MODE", "0") == "1"
 
     client = redis_client()
     reserve_ticket = load_reserve_ticket_script(client)
+    run_dummy_slot = load_dummy_slot_script(client)
     print(
-        f"Worker listening on {queue_key} with {batch_size} slots every {interval_seconds:.3f}s"
+        f"Worker listening on {queue_key} with {batch_size} slots every {interval_seconds:.3f}s "
+        f"(synthetic_dummy_mode={synthetic_dummy_mode})"
     )
 
     while True:
@@ -98,7 +130,14 @@ def main() -> int:
 
         try:
             for _ in range(batch_size):
-                if process_queue_slot(client, queue_key, reserve_ticket, event_id):
+                if process_queue_slot(
+                    client,
+                    queue_key,
+                    reserve_ticket,
+                    run_dummy_slot,
+                    event_id,
+                    synthetic_dummy_mode,
+                ):
                     real_jobs += 1
                 else:
                     dummy_jobs += 1
@@ -121,6 +160,7 @@ def main() -> int:
                     "queue_key": queue_key,
                     "batch_size": batch_size,
                     "interval_seconds": interval_seconds,
+                    "synthetic_dummy_mode": synthetic_dummy_mode,
                     "real_jobs": real_jobs,
                     "dummy_jobs": dummy_jobs,
                     "utilization": round(utilization, 4),

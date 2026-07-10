@@ -2,6 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 import { baseUrl, buildDynamicOptions, eventId } from './lib/config.js';
+import { recordOutcome } from './lib/outcome.js';
 
 export const options = buildDynamicOptions();
 
@@ -21,6 +22,7 @@ export default function () {
 
   const res = http.post(url, payload, params);
 
+  recordOutcome(res);
   check(res, {
     'status is 200 or 201': (r) => r.status === 200 || r.status === 201,
   });

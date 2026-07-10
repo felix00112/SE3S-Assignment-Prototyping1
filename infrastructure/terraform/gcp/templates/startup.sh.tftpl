@@ -79,6 +79,15 @@ else
 set -euo pipefail
 
 SCENARIO="$${1:-constant_load.js}"
+NAME="$${SCENARIO%.js}"
+TS="$(date +%Y%m%d-%H%M%S)"
+
+# Reports land here and are fetched back by scripts/gcp/run-tests.sh.
+#   raw-*.csv      : per-sample time series (throughput / latency / VUs over time)
+#   summary-*.json : end-of-run aggregates (+ accepted / rejected counters)
+OUT_DIR=/opt/se3s/k6-out
+mkdir -p "$${OUT_DIR}"
+chmod 777 "$${OUT_DIR}"
 
 cd /opt/se3s/app
 
@@ -87,6 +96,7 @@ docker_args=(
   -e BASE_URL="$${BASE_URL:-}"
   -e EVENT_ID="$${EVENT_ID:-1}"
   -v /opt/se3s/app/tests/k6:/scripts:ro
+  -v "$${OUT_DIR}":/out
 )
 
 if [ -n "$${K6_VUS:-}" ]; then
@@ -101,7 +111,10 @@ if [ -n "$${K6_STAGES:-}" ]; then
   docker_args+=(-e K6_STAGES="$${K6_STAGES}")
 fi
 
-sudo docker run "$${docker_args[@]}" grafana/k6:latest run "/scripts/$${SCENARIO}"
+sudo docker run "$${docker_args[@]}" grafana/k6:latest run \
+  --summary-export "/out/summary-$${NAME}-$${TS}.json" \
+  --out "csv=/out/raw-$${NAME}-$${TS}.csv" \
+  "/scripts/$${SCENARIO}"
 SCRIPT
 
   chmod +x /usr/local/bin/run-k6.sh

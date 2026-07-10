@@ -8,6 +8,11 @@ locals {
   subnet_cidr      = "10.20.0.0/24"
   redis_private_ip = cidrhost(local.subnet_cidr, 10)
 
+  # Every node (index 0..N-1) serves an API on :8000 at a deterministic private IP.
+  # The load balancer on node 0 fans out across all of them.
+  api_backend_ips = [for i in range(var.node_count) : cidrhost(local.subnet_cidr, 10 + i)]
+  nginx_upstream  = join("\n", [for ip in local.api_backend_ips : "        server ${ip}:8000;"])
+
   labels = {
     app         = "se3s"
     component   = "booking-mvp"
@@ -53,6 +58,19 @@ resource "google_compute_firewall" "ssh" {
   target_tags   = ["${var.name_prefix}-ssh"]
 }
 
+resource "google_compute_firewall" "lb" {
+  name    = "${var.name_prefix}-allow-lb"
+  network = google_compute_network.mvp.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  source_ranges = var.api_source_ranges
+  target_tags   = ["${var.name_prefix}-lb"]
+}
+
 resource "google_compute_firewall" "internal" {
   name    = "${var.name_prefix}-allow-internal"
   network = google_compute_network.mvp.name
@@ -71,10 +89,10 @@ resource "google_compute_instance" "mvp" {
   name         = count.index == 0 ? "${var.name_prefix}-vm" : "${var.name_prefix}-api-${count.index + 1}"
   machine_type = var.machine_type
   # Every node serves the API (so it needs the -api tag). Node 0 additionally
-  # hosts the single Redis + worker, so it also carries the -redis tag.
+  # hosts the single Redis + worker (-redis) and the Nginx load balancer (-lb).
   tags = concat(
     ["${var.name_prefix}-ssh", "${var.name_prefix}-api"],
-    count.index == 0 ? ["${var.name_prefix}-redis"] : []
+    count.index == 0 ? ["${var.name_prefix}-redis", "${var.name_prefix}-lb"] : []
   )
   labels = merge(local.labels, {
     role = count.index == 0 ? "coordinator" : "api"
@@ -105,6 +123,9 @@ resource "google_compute_instance" "mvp" {
     worker_replicas_per_node = var.worker_replicas_per_node
     event_id                 = var.event_id
     initial_seats            = var.initial_seats
+    # Load balancer config: only the coordinator (node 0) uses these.
+    nginx_upstream  = count.index == 0 ? local.nginx_upstream : ""
+    api_backend_ips = count.index == 0 ? join(" ", local.api_backend_ips) : ""
   })
 }
 
@@ -143,5 +164,7 @@ resource "google_compute_instance" "load_generator" {
     worker_replicas_per_node = var.worker_replicas_per_node
     event_id                 = var.event_id
     initial_seats            = var.initial_seats
+    nginx_upstream           = ""
+    api_backend_ips          = ""
   })
 }

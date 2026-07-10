@@ -116,18 +116,31 @@ Current detailed statuses:
 - `duplicate`
 - `event_not_found`
 
-## Targeted Architecture
+## Architecture
 
-The following diagram shows the intended full architecture beyond the current MVP:
+The following diagram shows the full request flow. Everything except the optional
+cleanup worker is implemented: the Nginx load balancer, a horizontally-scaled
+**stateless API tier** (deployed as 1 / 3 / 5 nodes of the same instance type), the
+per-user rate limiter, the queue-capacity admission gate, a **single worker**
+draining **one shared queue**, and the atomic Lua reserve. The stateful parts
+(Redis: rate-limit buckets, queue, seat counter, reservation state) stay singular so
+the atomic reservation stays correct no matter how many API replicas run.
 
 ```mermaid
 flowchart TD
-    A["k6 / Locust"] --> B["Nginx Load Balancer"]
-    B --> C1["FastAPI API 1"]
-    B --> C2["FastAPI API 2"]
-    B --> C3["FastAPI API N"]
+    A["k6 / Locust<br/>load generator"] --> B["Nginx Load Balancer"]
 
-    C1 --> D["Redis Rate Limiter"]
+    subgraph APITIER["Stateless API tier — scales horizontally (1 / 3 / 5 nodes)"]
+        C1["FastAPI API 1"]
+        C2["FastAPI API 2"]
+        C3["FastAPI API N"]
+    end
+
+    B --> C1
+    B --> C2
+    B --> C3
+
+    C1 --> D["Redis Rate Limiter<br/>per-user token bucket → 429"]
     C2 --> D
     C3 --> D
 
@@ -135,20 +148,15 @@ flowchart TD
     E -- "No" --> F["429 / 503 rejected"]
     E -- "Yes" --> G["Redis Booking Queue"]
 
-    G --> H1["Worker Cell 1<br/>fixed slots/sec"]
-    G --> H2["Worker Cell 2<br/>fixed slots/sec"]
-    G --> HN["Worker Cell N<br/>fixed slots/sec"]
-
-    H1 --> I["Atomic Redis Lua Script"]
-    H2 --> I
-    HN --> I
+    G --> H["Worker (single)<br/>BLPOP drains one shared queue"]
+    H --> I["Atomic Redis Lua Script"]
 
     I --> J["seats:available<br/>hot counter"]
     I --> K["reserved_users set"]
-    I --> L["reservation:{id}<br/>status + expiry"]
+    I --> L["reservation:{id}<br/>status"]
 
-    M["Cleanup Worker<br/>optional"] --> L
-    M --> J
+    M["Cleanup Worker<br/>optional / not implemented"] -.-> L
+    M -.-> J
 
     L --> N["Status Endpoint"]
 ```

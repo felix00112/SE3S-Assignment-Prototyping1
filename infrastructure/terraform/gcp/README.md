@@ -18,9 +18,9 @@ The goal is to keep the assignment deployment reproducible without jumping strai
 
 The API is the first component to bottleneck under load, so this setup scales the **API tier** horizontally while keeping the stateful parts singular. The assignment asks for `1` / `3` / `5` node configurations, all using the same instance type — so `node_count` is the number of API-serving VMs, and the single-node config runs the whole app on one VM.
 
-Node 0 (the coordinator) hosts the one Redis, the one worker, and an API replica. Nodes 1..N-1 are **stateless API-only replicas** that connect to node 0's Redis over the private VPC IP. Redis is only opened to the deployment subnet by the Terraform firewall rule. There is one shared queue and one shared seat counter, so correctness (the atomic Lua reserve) is preserved no matter how many API replicas run.
+Node 0 (the coordinator) hosts the one Redis, the one worker, an API replica, and an **Nginx load balancer**. Nodes 1..N-1 are **stateless API-only replicas** that connect to node 0's Redis over the private VPC IP. Redis is only opened to the deployment subnet by the Terraform firewall rule. There is one shared queue and one shared seat counter, so correctness (the atomic Lua reserve) is preserved no matter how many API replicas run.
 
-A load balancer is **not created yet** (planned next). Until then, `api_url` targets node 0's API and each replica is also reachable at its own public IP (see the `api_urls` output).
+The load balancer (Nginx, `least_conn`) runs on node 0 and fans out across every API replica's `:8000` (backends are static private IPs templated by Terraform). It is the **public entry point on port 80** — `api_url` points at it, and load tests should target it. Individual replicas stay reachable at their own `:8000` (see `api_urls`) for debugging. Nginx re-resolves nothing at runtime, but since each config (1/3/5) is a separate deployment, it picks up the full fixed backend set at startup.
 
 If `load_generator_enabled=true`, Terraform also creates a separate VM that installs Docker, clones this repository, and exposes a `run-k6.sh` helper for the `tests/k6` scenarios.
 
@@ -28,19 +28,21 @@ Node layout:
 
 ```text
 1 node:
-  se3s-mvp-vm: API + Redis + worker
+  se3s-mvp-vm: LB(:80) + API + Redis + worker
 
 3 nodes:
-  se3s-mvp-vm:    API + Redis + worker
+  se3s-mvp-vm:    LB(:80) + API + Redis + worker
   se3s-mvp-api-2: API   -> redis@coordinator
   se3s-mvp-api-3: API   -> redis@coordinator
 
 5 nodes:
-  se3s-mvp-vm:    API + Redis + worker
+  se3s-mvp-vm:    LB(:80) + API + Redis + worker
   se3s-mvp-api-2: API   -> redis@coordinator
   se3s-mvp-api-3: API   -> redis@coordinator
   se3s-mvp-api-4: API   -> redis@coordinator
   se3s-mvp-api-5: API   -> redis@coordinator
+
+Public traffic -> se3s-mvp-vm:80 (Nginx) -> least_conn across all API :8000
 ```
 
 ## Prerequisites

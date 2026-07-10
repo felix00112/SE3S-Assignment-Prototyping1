@@ -1,10 +1,10 @@
 output "api_url" {
-  description = "Public URL for the FastAPI API on the coordinator node. NOTE: until the Nginx load balancer is added, this points at node 0 only; the other API replicas are reachable at their own public IPs (see api_urls)."
-  value       = "http://${google_compute_instance.mvp[0].network_interface[0].access_config[0].nat_ip}:8000"
+  description = "Public entry point: the Nginx load balancer on the coordinator node (port 80), which fans out across all API replicas. Point load tests here."
+  value       = "http://${google_compute_instance.mvp[0].network_interface[0].access_config[0].nat_ip}"
 }
 
 output "api_urls" {
-  description = "Public URL of every API replica (node 0 = coordinator). Once the load balancer exists, traffic should go through it instead."
+  description = "Direct per-replica URLs (node 0 = coordinator), port 8000, for debugging individual nodes. Normal traffic should go through api_url (the load balancer) instead."
   value = [
     for instance in google_compute_instance.mvp :
     "http://${instance.network_interface[0].access_config[0].nat_ip}:8000"

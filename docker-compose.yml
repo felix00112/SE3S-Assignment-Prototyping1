@@ -10,7 +10,7 @@ services:
     environment:
       RATE_LIMIT_CAPACITY: "5"
       RATE_LIMIT_REFILL_RATE: "1"
-      ADMISSION_MAX_QUEUE_LENGTH: "100"
+      ADMISSION_MAX_QUEUE_LENGTH: "500"
     deploy:
       replicas: 1 # Change for more replicas
 

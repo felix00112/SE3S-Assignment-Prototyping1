@@ -30,7 +30,7 @@ DEFAULT_LUA_SCRIPT_PATH = (
 LUA_SCRIPT_PATH = Path(os.getenv("ADMISSION_LUA_PATH", DEFAULT_LUA_SCRIPT_PATH))
 
 # Maximum number of pending items allowed in the booking queue.
-MAX_QUEUE_LENGTH = int(os.getenv("ADMISSION_MAX_QUEUE_LENGTH", "100"))
+MAX_QUEUE_LENGTH = int(os.getenv("ADMISSION_MAX_QUEUE_LENGTH", "500"))
 
 # Static hint sent to rejected clients (seconds).
 ADMISSION_RETRY_AFTER_SECONDS = int(os.getenv("ADMISSION_RETRY_AFTER_SECONDS", "1"))

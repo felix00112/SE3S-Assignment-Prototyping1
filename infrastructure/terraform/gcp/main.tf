@@ -116,16 +116,16 @@ resource "google_compute_instance" "mvp" {
   }
 
   metadata_startup_script = templatefile("${path.module}/templates/startup.sh.tftpl", {
-    source_repo_url          = var.source_repo_url
-    source_ref               = var.source_ref
-    node_role                = count.index == 0 ? "coordinator" : "api"
-    redis_host               = local.redis_private_ip
-    worker_replicas_per_node = var.worker_replicas_per_node
-    worker_batch_size        = var.worker_batch_size
-    worker_interval_seconds  = var.worker_interval_seconds
+    source_repo_url             = var.source_repo_url
+    source_ref                  = var.source_ref
+    node_role                   = count.index == 0 ? "coordinator" : "api"
+    redis_host                  = local.redis_private_ip
+    worker_replicas_per_node    = var.worker_replicas_per_node
+    worker_batch_size           = var.worker_batch_size
+    worker_interval_seconds     = var.worker_interval_seconds
     worker_synthetic_dummy_mode = var.worker_synthetic_dummy_mode
-    event_id                 = var.event_id
-    initial_seats            = var.initial_seats
+    event_id                    = var.event_id
+    initial_seats               = var.initial_seats
     # Load balancer config: only the coordinator (node 0) uses these.
     nginx_upstream  = count.index == 0 ? local.nginx_upstream : ""
     api_backend_ips = count.index == 0 ? join(" ", local.api_backend_ips) : ""
@@ -160,17 +160,17 @@ resource "google_compute_instance" "load_generator" {
   }
 
   metadata_startup_script = templatefile("${path.module}/templates/startup.sh.tftpl", {
-    source_repo_url          = var.source_repo_url
-    source_ref               = var.source_ref
-    node_role                = "load-generator"
-    redis_host               = local.redis_private_ip
-    worker_replicas_per_node = var.worker_replicas_per_node
-    worker_batch_size        = var.worker_batch_size
-    worker_interval_seconds  = var.worker_interval_seconds
+    source_repo_url             = var.source_repo_url
+    source_ref                  = var.source_ref
+    node_role                   = "load-generator"
+    redis_host                  = local.redis_private_ip
+    worker_replicas_per_node    = var.worker_replicas_per_node
+    worker_batch_size           = var.worker_batch_size
+    worker_interval_seconds     = var.worker_interval_seconds
     worker_synthetic_dummy_mode = var.worker_synthetic_dummy_mode
-    event_id                 = var.event_id
-    initial_seats            = var.initial_seats
-    nginx_upstream           = ""
-    api_backend_ips          = ""
+    event_id                    = var.event_id
+    initial_seats               = var.initial_seats
+    nginx_upstream              = ""
+    api_backend_ips             = ""
   })
 }

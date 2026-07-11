@@ -28,7 +28,36 @@ K6_DURATION=3m
 STAGES='[{"duration":"1m","target":100},{"duration":"2m","target":300},{"duration":"30s","target":0}]'
 ```
 
+`baseline_scaling.js` is the **open-loop scaling baseline** for the 1/3/5 comparison.
+It uses a `ramping-arrival-rate` executor: it **ramps the offered load from
+`BASELINE_START_RATE` up to `BASELINE_RATE`** over `BASELINE_DURATION`, regardless of
+how fast the cluster responds (no coordinated omission; every cluster sees the same
+offered curve). Fresh user per request, and `503` is marked an expected status so
+admission shedding doesn't count as a transport failure. **One run per cluster** — no
+rate sweep: each run reveals that cluster's ceiling as the point where accepted/s
+plateaus while 503s, latency, and **dropped iterations** climb. That knee rises with
+node count. Read it from the raw CSV (accepted/s over time). Knobs: `BASELINE_RATE`
+(peak), `BASELINE_START_RATE`, `BASELINE_DURATION`, `BASELINE_PREALLOCATED_VUS`,
+`BASELINE_MAX_VUS`.
+
+> Control this one with `BASELINE_*`, **not** `K6_VUS` / `K6_DURATION`. Those are
+> reserved by k6 and, if set, replace the whole `scenarios` block with a single-VU
+> closed loop — silently turning it back into a broken closed-loop test.
+
 `constant_load.js` uses `K6_VUS` and `K6_DURATION`.
+
+`baseline_scaling.js` is the recommended **requirement 2 baseline**. It uses a
+**constant arrival rate** with a **fresh user_id per request**, so each 1 / 3 / 5 node
+deployment sees the same offered load and the per-user rate limiter does not dominate
+the result. It accepts `503` as expected overload shedding. Override it with:
+
+```bash
+BASELINE_RATE=300
+BASELINE_TIME_UNIT=1s
+BASELINE_PREALLOCATED_VUS=400
+BASELINE_MAX_VUS=1200
+K6_DURATION=1m
+```
 
 `dynamic_load.js` uses `STAGES` as a JSON array. If no env vars are supplied, both scripts keep their current defaults.
 
@@ -42,6 +71,15 @@ the same users hammer the endpoint, it exercises the per-user rate limiter under
 realistic "link just went live" spike. Reports `throttled_requests` plus the
 `accepted` / `rejected_rate_limited` / `rejected_admission` counters. Override the ramp
 with `STAGES`.
+
+`realistic_load.js` models **real users** rather than flat-out bots: each VU is one
+user (`user-<VU>`) that makes a booking attempt, then **pauses (`THINK_TIME`, default
+1s, with jitter)** before the next. The think time keeps each VU idle most of the time,
+so it adds almost nothing to concurrency — a VU here is ~100x lighter than a no-sleep
+`constant_load` VU. That means **`K6_VUS` maps to concurrent users**: run thousands to
+get thousands of distinct users *safely*. At ~1 req/s per user the rate limiter mostly
+stays quiet (realistic users aren't throttled). Knobs: `K6_VUS`, `K6_DURATION`,
+`THINK_TIME`.
 
 `rate_limit_load.js` also uses `K6_VUS` and `K6_DURATION`, but assigns a **stable
 per-VU `user_id`** (`rl-user-<VU>`) instead of a fresh UUID per request. That means
@@ -85,8 +123,15 @@ terraform apply \
 Then run a scenario from the repo root:
 
 ```bash
+scripts/run-gcp-load-test.sh baseline_scaling
 scripts/run-gcp-load-test.sh constant_load
 scripts/run-gcp-load-test.sh dynamic_load
+```
+
+Example baseline scaling run:
+
+```bash
+BASELINE_RATE=300 K6_DURATION=1m scripts/run-gcp-load-test.sh baseline_scaling
 ```
 
 Example with custom load shape:

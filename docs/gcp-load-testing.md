@@ -19,14 +19,14 @@ Three parameterized helpers wrap the raw Terraform/gcloud commands:
 
 ```bash
 scripts/gcp/deploy.sh   -p PROJECT_ID -n 3            # deploy a 3-node cluster + load generator
-scripts/gcp/run-tests.sh -p PROJECT_ID constant_load # run a scenario, fetch reports, print headline metrics
+scripts/gcp/run-tests.sh -p PROJECT_ID baseline_scaling # run a scenario, fetch reports, print headline metrics
 scripts/gcp/destroy.sh  -p PROJECT_ID                # tear everything down
 ```
 
 `deploy.sh` flags: `-n` node_count (1/3/5), `-m` machine_type (raise for vertical
 scaling), `-s` initial_seats, `-r` source_ref (defaults to your current branch),
 `-g` load generator on/off. `run-tests.sh` accepts the scenario name and passes
-through `K6_VUS` / `K6_DURATION` / `STAGES`.
+through `K6_VUS` / `K6_DURATION` / `STAGES` / `BASELINE_*`.
 
 ### Reports & plots
 
@@ -91,11 +91,11 @@ destroy):
 for N in 1 3 5; do
   scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n "$N"
 
-  # 300 VUs so the offered load actually SATURATES the API tier. With the default
-  # 20 VUs the test is client-limited (~20 / latency req/s) and the 1/3/5 curve
-  # looks flat no matter how many API nodes you add. run-tests.sh waits for the LB
-  # before starting, fetches the reports, and prints the headline numbers.
-  K6_VUS=300 K6_DURATION=1m scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID constant_load
+  # The baseline should use the same offered load on every deployment. A constant
+  # arrival rate does that more cleanly than fixed VUs because slower clusters do not
+  # automatically "back off" by spending more time blocked in request latency.
+  BASELINE_RATE=300 K6_DURATION=1m \
+    scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID baseline_scaling
 
   scripts/gcp/destroy.sh -p YOUR_PROJECT_ID
 done
@@ -110,8 +110,9 @@ Which metric to plot:
   worker, so it stays roughly **flat** — that plateau is your scalability-limitations
   point.
 
-Tip: sweep the load (e.g. `K6_VUS=50 150 300 600`) at each node count to find where
-each cluster size saturates; the peak requests-handled/s per size is the scaling curve.
+Tip: sweep the baseline offered load (e.g. `BASELINE_RATE=150 300 450 600`) at each
+node count to find where each cluster size saturates; the peak requests-handled/s per
+size is the scaling curve.
 
 ## 2. Verify The API Before Load Testing
 
@@ -139,24 +140,25 @@ gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID -
 From the repo root:
 
 ```bash
-scripts/run-gcp-load-test.sh constant_load
+BASELINE_RATE=300 K6_DURATION=1m scripts/run-gcp-load-test.sh baseline_scaling
 ```
 
-This uses the default `constant_load.js` profile:
+This uses the dedicated `baseline_scaling.js` profile:
 
-- `20` VUs
+- `300` arrivals per second by default
 - `1m` duration
 - unique `user_id` per request
+- `503` counts as expected overload shedding, not a transport failure
 
-That means it measures overall booking throughput, not per-user rate limiting.
+That makes it the cleanest requirement-2 comparison across `1 / 3 / 5` nodes.
 
 ## 4. Override Load Shape
 
-Higher steady concurrency:
+Higher steady baseline load:
 
 ```bash
-K6_VUS=50 K6_DURATION=1m scripts/run-gcp-load-test.sh constant_load
-K6_VUS=100 K6_DURATION=2m scripts/run-gcp-load-test.sh constant_load
+BASELINE_RATE=450 K6_DURATION=1m scripts/run-gcp-load-test.sh baseline_scaling
+BASELINE_RATE=600 K6_DURATION=2m scripts/run-gcp-load-test.sh baseline_scaling
 ```
 
 Ramp-up / ramp-down scenario:
@@ -204,7 +206,8 @@ gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID -
 
 ## 6. Rate Limiter Caveat
 
-The current `constant_load.js` and `dynamic_load.js` intentionally generate a fresh UUID per request.
+The current `baseline_scaling.js`, `constant_load.js`, and `dynamic_load.js`
+intentionally generate a fresh UUID per request.
 
 That means:
 

@@ -49,6 +49,12 @@ if [ -n "${STAGES:-}" ]; then
   env_assignments+=("STAGES='${STAGES}'")
 fi
 
+for baseline_var in BASELINE_RATE BASELINE_TIME_UNIT BASELINE_PREALLOCATED_VUS BASELINE_MAX_VUS; do
+  if [ -n "${!baseline_var:-}" ]; then
+    env_assignments+=("${baseline_var}='${!baseline_var}'")
+  fi
+done
+
 remote_command="sudo $(printf "%s " "${env_assignments[@]}")/usr/local/bin/run-k6.sh '$SCENARIO'"
 
 echo "Running $SCENARIO from $loadgen_name against $api_url"

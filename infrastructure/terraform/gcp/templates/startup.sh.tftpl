@@ -101,17 +101,15 @@ docker_args=(
   -v "$${OUT_DIR}":/out
 )
 
-if [ -n "$${K6_VUS:-}" ]; then
-  docker_args+=(-e K6_VUS="$${K6_VUS}")
-fi
-
-if [ -n "$${K6_DURATION:-}" ]; then
-  docker_args+=(-e K6_DURATION="$${K6_DURATION}")
-fi
-
-if [ -n "$${STAGES:-}" ]; then
-  docker_args+=(-e STAGES="$${STAGES}")
-fi
+# Forward any load-shape env vars that were set, to the k6 container.
+for v in K6_VUS K6_DURATION STAGES THINK_TIME \
+         BASELINE_RATE BASELINE_START_RATE BASELINE_DURATION \
+         BASELINE_PREALLOCATED_VUS BASELINE_MAX_VUS; do
+  val="$${!v:-}"
+  if [ -n "$${val}" ]; then
+    docker_args+=(-e "$${v}=$${val}")
+  fi
+done
 
 sudo docker run "$${docker_args[@]}" grafana/k6:latest run \
   --summary-export "/out/summary-$${NAME}-$${TS}.json" \

@@ -11,6 +11,10 @@ function parseDuration(value, fallback) {
   return value && value.trim() ? value.trim() : fallback;
 }
 
+function parseTimeUnit(value, fallback) {
+  return value && value.trim() ? value.trim() : fallback;
+}
+
 function parseStages(value, fallback) {
   if (!value || !value.trim()) {
     return fallback;
@@ -35,6 +39,37 @@ export function buildConstantOptions() {
   return {
     vus: parsePositiveInt(__ENV.K6_VUS, 20),
     duration: parseDuration(__ENV.K6_DURATION, '1m'),
+  };
+}
+
+// Open-loop scaling baseline. An arrival-rate executor MUST live inside a `scenarios`
+// block — a bare top-level `executor` is silently ignored by k6 (it falls back to a
+// single-VU closed loop). Its knobs use BASELINE_* env vars, NOT K6_VUS / K6_DURATION:
+// those are reserved by k6 and, if set, override the whole `scenarios` block with a
+// top-level closed-loop config.
+//
+// It RAMPS the offered load from BASELINE_START_RATE up to BASELINE_RATE over
+// BASELINE_DURATION, independent of how fast the cluster responds. One run per cluster
+// reveals that cluster's ceiling: accepted/s climbs then plateaus, and 503s / latency /
+// dropped iterations start once the offered rate passes what it can handle. The
+// plateau (the "knee") rises with node count — no manual rate sweep needed.
+export function buildBaselineOptions() {
+  return {
+    scenarios: {
+      baseline: {
+        executor: 'ramping-arrival-rate',
+        startRate: parsePositiveInt(__ENV.BASELINE_START_RATE, 100),
+        timeUnit: '1s',
+        preAllocatedVUs: parsePositiveInt(__ENV.BASELINE_PREALLOCATED_VUS, 200),
+        maxVUs: parsePositiveInt(__ENV.BASELINE_MAX_VUS, 2000),
+        stages: [
+          {
+            target: parsePositiveInt(__ENV.BASELINE_RATE, 4000),
+            duration: parseDuration(__ENV.BASELINE_DURATION, '2m'),
+          },
+        ],
+      },
+    },
   };
 }
 

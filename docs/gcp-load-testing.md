@@ -83,30 +83,35 @@ the machine size, e.g. `-var="machine_type=e2-standard-2"`.
 
 ### Scaling comparison workflow (a / b / c)
 
-Each configuration is a separate deploy → measure → destroy cycle. Run the same load
-test at each size and record the throughput (`http_reqs`/s from the k6 summary):
+Each configuration is a separate deploy → measure → destroy cycle, using the wrapper
+scripts (which handle apply, the load-balancer readiness wait, report fetch, and
+destroy):
 
 ```bash
 for N in 1 3 5; do
-  terraform -chdir=infrastructure/terraform/gcp apply -auto-approve \
-    -var="project_id=YOUR_PROJECT_ID" \
-    -var="source_ref=YOUR_BRANCH_OR_COMMIT" \
-    -var="node_count=$N" \
-    -var="load_generator_enabled=true" \
-    -var="initial_seats=1000000"
+  scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n "$N"
 
-  sleep 180   # let all nodes boot and the LB pick up its backends
+  # 300 VUs so the offered load actually SATURATES the API tier. With the default
+  # 20 VUs the test is client-limited (~20 / latency req/s) and the 1/3/5 curve
+  # looks flat no matter how many API nodes you add. run-tests.sh waits for the LB
+  # before starting, fetches the reports, and prints the headline numbers.
+  K6_VUS=300 K6_DURATION=1m scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID constant_load
 
-  curl "$(terraform -chdir=infrastructure/terraform/gcp output -raw api_url)/health"
-  scripts/run-gcp-load-test.sh constant_load | tee "results-$N-nodes.txt"   # saves the k6 summary per size
-
-  terraform -chdir=infrastructure/terraform/gcp destroy -auto-approve \
-    -var="project_id=YOUR_PROJECT_ID"
+  scripts/gcp/destroy.sh -p YOUR_PROJECT_ID
 done
 ```
 
-Throughput should rise from 1 → 3 → 5 API nodes until the single worker / Redis
-becomes the limiting component — that plateau is your scalability-limitations point.
+Which metric to plot:
+
+- **Requests handled/s** (`http_reqs` rate = accepted + cleanly-rejected 503) is the
+  API + load-balancer tier capacity. This should **rise from 1 → 3 → 5 nodes** — the
+  "horizontal scaling works" result.
+- **Accepted bookings/s** (the `accepted` counter / duration) is gated by the single
+  worker, so it stays roughly **flat** — that plateau is your scalability-limitations
+  point.
+
+Tip: sweep the load (e.g. `K6_VUS=50 150 300 600`) at each node count to find where
+each cluster size saturates; the peak requests-handled/s per size is the scaling curve.
 
 ## 2. Verify The API Before Load Testing
 

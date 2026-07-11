@@ -88,8 +88,9 @@ gcloud compute ssh "$loadgen_name" --zone "$ZONE" --project "$PROJECT" --command
 echo ">> Fetching reports into $OUTDIR"
 gcloud compute scp --recurse "$loadgen_name:/opt/se3s/k6-out" "$OUTDIR" --zone "$ZONE" --project "$PROJECT"
 
-# Print headline numbers from the newest summary json (best-effort).
-latest_summary="$(ls -t "$OUTDIR"/k6-out/summary-*.json 2>/dev/null | head -1 || true)"
+# Print headline numbers from the newest summary json (best-effort). Sort by the
+# timestamp embedded in the filename, not mtime (scp gives all files the same mtime).
+latest_summary="$(ls "$OUTDIR"/k6-out/summary-*.json 2>/dev/null | sort | tail -1 || true)"
 if [ -n "$latest_summary" ] && command -v python3 >/dev/null 2>&1; then
   echo ">> Headline metrics ($latest_summary):"
   python3 "$ROOT/scripts/gcp/summarize.py" "$latest_summary" || true

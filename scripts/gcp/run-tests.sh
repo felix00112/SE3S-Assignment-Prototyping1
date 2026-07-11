@@ -16,6 +16,7 @@ set -euo pipefail
 #
 # Load shape overrides are passed through as env vars, e.g.:
 #   K6_VUS=100 K6_DURATION=2m scripts/gcp/run-tests.sh -p PROJECT constant_load
+#   BASELINE_RATE=300 K6_DURATION=1m scripts/gcp/run-tests.sh -p PROJECT baseline_scaling
 #   STAGES='[...]'          scripts/gcp/run-tests.sh -p PROJECT dynamic_load
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -75,10 +76,10 @@ if [ "$ready" != 1 ]; then
 fi
 echo ">> Load balancer is ready."
 
-# Forward BASE_URL (the LB) + any K6_* load-shape overrides to the remote helper.
+# Forward BASE_URL (the LB) + any load-shape overrides to the remote helper.
 # STAGES (not K6_STAGES — reserved) overrides the ramp for dynamic_load / flash_sale.
 env_assignments=("BASE_URL='$api_url'" "EVENT_ID='${EVENT_ID:-1}'")
-for v in K6_VUS K6_DURATION STAGES; do
+for v in K6_VUS K6_DURATION STAGES BASELINE_RATE BASELINE_TIME_UNIT BASELINE_PREALLOCATED_VUS BASELINE_MAX_VUS; do
   if [ -n "${!v:-}" ]; then env_assignments+=("$v='${!v}'"); fi
 done
 remote_command="sudo $(printf "%s " "${env_assignments[@]}")/usr/local/bin/run-k6.sh '$SCENARIO'"

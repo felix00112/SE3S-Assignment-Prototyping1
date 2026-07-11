@@ -11,6 +11,10 @@ function parseDuration(value, fallback) {
   return value && value.trim() ? value.trim() : fallback;
 }
 
+function parseTimeUnit(value, fallback) {
+  return value && value.trim() ? value.trim() : fallback;
+}
+
 function parseStages(value, fallback) {
   if (!value || !value.trim()) {
     return fallback;
@@ -35,6 +39,17 @@ export function buildConstantOptions() {
   return {
     vus: parsePositiveInt(__ENV.K6_VUS, 20),
     duration: parseDuration(__ENV.K6_DURATION, '1m'),
+  };
+}
+
+export function buildBaselineOptions() {
+  return {
+    executor: 'constant-arrival-rate',
+    rate: parsePositiveInt(__ENV.BASELINE_RATE, 300),
+    timeUnit: parseTimeUnit(__ENV.BASELINE_TIME_UNIT, '1s'),
+    duration: parseDuration(__ENV.K6_DURATION, '1m'),
+    preAllocatedVUs: parsePositiveInt(__ENV.BASELINE_PREALLOCATED_VUS, 400),
+    maxVUs: parsePositiveInt(__ENV.BASELINE_MAX_VUS, 1200),
   };
 }
 

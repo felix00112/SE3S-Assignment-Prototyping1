@@ -30,6 +30,19 @@ STAGES='[{"duration":"1m","target":100},{"duration":"2m","target":300},{"duratio
 
 `constant_load.js` uses `K6_VUS` and `K6_DURATION`.
 
+`baseline_scaling.js` is the recommended **requirement 2 baseline**. It uses a
+**constant arrival rate** with a **fresh user_id per request**, so each 1 / 3 / 5 node
+deployment sees the same offered load and the per-user rate limiter does not dominate
+the result. It accepts `503` as expected overload shedding. Override it with:
+
+```bash
+BASELINE_RATE=300
+BASELINE_TIME_UNIT=1s
+BASELINE_PREALLOCATED_VUS=400
+BASELINE_MAX_VUS=1200
+K6_DURATION=1m
+```
+
 `dynamic_load.js` uses `STAGES` as a JSON array. If no env vars are supplied, both scripts keep their current defaults.
 
 > Override the ramp with the `STAGES` env var (JSON), **not** `K6_STAGES` — `K6_STAGES`
@@ -85,8 +98,15 @@ terraform apply \
 Then run a scenario from the repo root:
 
 ```bash
+scripts/run-gcp-load-test.sh baseline_scaling
 scripts/run-gcp-load-test.sh constant_load
 scripts/run-gcp-load-test.sh dynamic_load
+```
+
+Example baseline scaling run:
+
+```bash
+BASELINE_RATE=300 K6_DURATION=1m scripts/run-gcp-load-test.sh baseline_scaling
 ```
 
 Example with custom load shape:

@@ -9,7 +9,11 @@ set -euo pipefail
 #   scripts/gcp/run-tests.sh -p PROJECT_ID [-z ZONE] [-o OUTDIR] [SCENARIO]
 #
 #   SCENARIO   k6 script name (default constant_load). ".js" optional.
-#              e.g. constant_load | dynamic_load | flash_sale | rate_limit_load
+#              e.g. baseline_scaling | constant_load | dynamic_load | flash_sale
+#                   | realistic_load | rate_limit_load
+#
+# baseline_scaling is open-loop: control it with BASELINE_RATE / BASELINE_DURATION,
+# NOT K6_VUS / K6_DURATION (those are reserved by k6 and break its scenarios config).
 #   -p  GCP project id   (PROJECT)  [required]
 #   -z  GCP zone         (ZONE)     [default europe-west3-a]
 #   -o  local out dir    (OUTDIR)   [default results/<timestamp>-<scenario>]
@@ -79,7 +83,9 @@ echo ">> Load balancer is ready."
 # Forward BASE_URL (the LB) + any load-shape overrides to the remote helper.
 # STAGES (not K6_STAGES — reserved) overrides the ramp for dynamic_load / flash_sale.
 env_assignments=("BASE_URL='$api_url'" "EVENT_ID='${EVENT_ID:-1}'")
-for v in K6_VUS K6_DURATION STAGES BASELINE_RATE BASELINE_TIME_UNIT BASELINE_PREALLOCATED_VUS BASELINE_MAX_VUS; do
+for v in K6_VUS K6_DURATION STAGES THINK_TIME \
+         BASELINE_RATE BASELINE_START_RATE BASELINE_DURATION \
+         BASELINE_PREALLOCATED_VUS BASELINE_MAX_VUS; do
   if [ -n "${!v:-}" ]; then env_assignments+=("$v='${!v}'"); fi
 done
 remote_command="sudo $(printf "%s " "${env_assignments[@]}")/usr/local/bin/run-k6.sh '$SCENARIO'"

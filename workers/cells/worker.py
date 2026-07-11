@@ -8,6 +8,8 @@ import redis
 
 from shared.redis_keys import (
     booking_queue_key,
+    dummy_reserved_users_key,
+    dummy_status_key,
     dummy_slots_key,
     event_seats_available_key,
     reservation_status_key,
@@ -32,6 +34,7 @@ DEFAULT_DUMMY_LUA_SCRIPT_PATH = (
     Path(__file__).resolve().parents[2] / "infrastructure" / "redis" / "lua" / "dummy_slot.lua"
 )
 DUMMY_LUA_SCRIPT_PATH = Path(os.getenv("DUMMY_SLOT_LUA_PATH", DEFAULT_DUMMY_LUA_SCRIPT_PATH))
+DUMMY_USER_ID = os.getenv("DUMMY_USER_ID", "__dummy_user__")
 
 
 def load_reserve_ticket_script(redis_client):
@@ -74,9 +77,11 @@ def process_dummy_slot(run_dummy_slot, event_id: int) -> None:
     run_dummy_slot(
         keys=[
             event_seats_available_key(event_id),
-            reserved_users_key(event_id),
+            dummy_reserved_users_key(event_id),
+            dummy_status_key(event_id),
             dummy_slots_key(event_id),
-        ]
+        ],
+        args=[DUMMY_USER_ID],
     )
 
 

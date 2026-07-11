@@ -65,7 +65,10 @@ terraform init
 terraform apply \
   -var="project_id=YOUR_PROJECT_ID" \
   -var="source_ref=gcp-terraform-mvp" \
-  -var="node_count=1"
+  -var="node_count=1" \
+  -var="worker_batch_size=100" \
+  -var="worker_interval_seconds=1" \
+  -var="worker_synthetic_dummy_mode=false"
 ```
 
 Use `node_count=3` or `node_count=5` for the other comparison deployments.
@@ -78,10 +81,21 @@ terraform apply \
   -var="source_ref=gcp-terraform-mvp" \
   -var="node_count=3" \
   -var="load_generator_enabled=true" \
-  -var="initial_seats=100000"
+  -var="initial_seats=100000" \
+  -var="worker_batch_size=100" \
+  -var="worker_interval_seconds=1" \
+  -var="worker_synthetic_dummy_mode=true"
 ```
 
 For load runs, set `initial_seats` high enough that requests do not immediately transition into `sold_out`.
+
+Worker constant-work settings are now explicit Terraform inputs:
+
+- `worker_batch_size`
+- `worker_interval_seconds`
+- `worker_synthetic_dummy_mode`
+
+That means you can run the same node-count deployment with different worker pacing or with synthetic dummy slots enabled, without editing files on the VM.
 
 If you deployed the older single-VM Terraform version first, destroy it before applying this node-count version. That avoids Terraform replacing the original VM while you are still debugging:
 

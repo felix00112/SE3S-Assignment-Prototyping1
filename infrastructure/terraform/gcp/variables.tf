@@ -68,6 +68,24 @@ variable "worker_replicas_per_node" {
   default     = 1
 }
 
+variable "worker_batch_size" {
+  description = "Number of worker slots processed per constant-work cycle."
+  type        = number
+  default     = 100
+}
+
+variable "worker_interval_seconds" {
+  description = "Target duration of one constant-work worker cycle in seconds."
+  type        = number
+  default     = 1
+}
+
+variable "worker_synthetic_dummy_mode" {
+  description = "Whether empty worker slots should run the synthetic Redis/Lua dummy path."
+  type        = bool
+  default     = false
+}
+
 variable "event_id" {
   description = "Prototype event ID consumed by the worker."
   type        = number

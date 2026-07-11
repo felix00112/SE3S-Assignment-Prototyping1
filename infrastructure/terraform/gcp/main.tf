@@ -121,6 +121,9 @@ resource "google_compute_instance" "mvp" {
     node_role                = count.index == 0 ? "coordinator" : "api"
     redis_host               = local.redis_private_ip
     worker_replicas_per_node = var.worker_replicas_per_node
+    worker_batch_size        = var.worker_batch_size
+    worker_interval_seconds  = var.worker_interval_seconds
+    worker_synthetic_dummy_mode = var.worker_synthetic_dummy_mode
     event_id                 = var.event_id
     initial_seats            = var.initial_seats
     # Load balancer config: only the coordinator (node 0) uses these.
@@ -162,6 +165,9 @@ resource "google_compute_instance" "load_generator" {
     node_role                = "load-generator"
     redis_host               = local.redis_private_ip
     worker_replicas_per_node = var.worker_replicas_per_node
+    worker_batch_size        = var.worker_batch_size
+    worker_interval_seconds  = var.worker_interval_seconds
+    worker_synthetic_dummy_mode = var.worker_synthetic_dummy_mode
     event_id                 = var.event_id
     initial_seats            = var.initial_seats
     nginx_upstream           = ""

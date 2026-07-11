@@ -26,7 +26,7 @@ scripts/gcp/destroy.sh  -p PROJECT_ID                # tear everything down
 `deploy.sh` flags: `-n` node_count (1/3/5), `-m` machine_type (raise for vertical
 scaling), `-s` initial_seats, `-r` source_ref (defaults to your current branch),
 `-g` load generator on/off. `run-tests.sh` accepts the scenario name and passes
-through `K6_VUS` / `K6_DURATION` / `K6_STAGES`.
+through `K6_VUS` / `K6_DURATION` / `STAGES`.
 
 ### Reports & plots
 
@@ -168,7 +168,7 @@ scripts/run-gcp-load-test.sh dynamic_load
 Custom dynamic stages:
 
 ```bash
-K6_STAGES='[{"duration":"2m","target":100},{"duration":"3m","target":400},{"duration":"1m","target":0}]' \
+STAGES='[{"duration":"2m","target":100},{"duration":"3m","target":400},{"duration":"1m","target":0}]' \
   scripts/run-gcp-load-test.sh dynamic_load
 ```
 

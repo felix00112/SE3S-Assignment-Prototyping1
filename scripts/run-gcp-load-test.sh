@@ -45,8 +45,8 @@ if [ -n "${K6_DURATION:-}" ]; then
   env_assignments+=("K6_DURATION='${K6_DURATION}'")
 fi
 
-if [ -n "${K6_STAGES:-}" ]; then
-  env_assignments+=("K6_STAGES='${K6_STAGES}'")
+if [ -n "${STAGES:-}" ]; then
+  env_assignments+=("STAGES='${STAGES}'")
 fi
 
 remote_command="sudo $(printf "%s " "${env_assignments[@]}")/usr/local/bin/run-k6.sh '$SCENARIO'"

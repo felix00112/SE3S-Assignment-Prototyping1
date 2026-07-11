@@ -38,14 +38,32 @@ export function buildConstantOptions() {
   };
 }
 
+// NOTE: stages are overridden via the STAGES env var, NOT K6_STAGES. K6_STAGES is a
+// reserved k6 variable that k6 parses itself (in its own "10s:100,..." format) before
+// the script runs, so passing JSON in K6_STAGES errors out. STAGES has no K6_ prefix,
+// so k6 leaves it alone and we read it as JSON via __ENV.STAGES.
 export function buildDynamicOptions() {
   return {
-    stages: parseStages(__ENV.K6_STAGES, [
+    stages: parseStages(__ENV.STAGES, [
       { duration: '1m', target: 100 },
       { duration: '2m', target: 1000 },
       { duration: '2m', target: 500 },
       { duration: '1m', target: 750 },
       { duration: '30s', target: 0 },
+    ]),
+  };
+}
+
+export function buildFlashSaleOptions() {
+  // Flash-sale burst: a link opens and users pile in fast. 0 -> 50 -> 200,
+  // hold at the peak, then drain. Modest peak on purpose (small VMs), and with
+  // reused user ids the rate limiter sheds most of it anyway.
+  return {
+    stages: parseStages(__ENV.STAGES, [
+      { duration: '20s', target: 50 },
+      { duration: '40s', target: 200 },
+      { duration: '30s', target: 200 },
+      { duration: '20s', target: 0 },
     ]),
   };
 }

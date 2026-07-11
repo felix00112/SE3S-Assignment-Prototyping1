@@ -25,12 +25,23 @@ Useful overrides:
 ```bash
 K6_VUS=50
 K6_DURATION=3m
-K6_STAGES='[{"duration":"1m","target":100},{"duration":"2m","target":300},{"duration":"30s","target":0}]'
+STAGES='[{"duration":"1m","target":100},{"duration":"2m","target":300},{"duration":"30s","target":0}]'
 ```
 
 `constant_load.js` uses `K6_VUS` and `K6_DURATION`.
 
-`dynamic_load.js` uses `K6_STAGES` as a JSON array. If no env vars are supplied, both scripts keep their current defaults.
+`dynamic_load.js` uses `STAGES` as a JSON array. If no env vars are supplied, both scripts keep their current defaults.
+
+> Override the ramp with the `STAGES` env var (JSON), **not** `K6_STAGES` — `K6_STAGES`
+> is reserved by k6 (it parses it in its own `10s:100,...` format before the script runs)
+> and passing JSON there errors out.
+
+`flash_sale.js` models a flash-sale burst: a staged ramp **0 → 50 → 200** VUs (hold,
+then drain) combined with a **stable per-VU `user_id`** (`flash-user-<VU>`). Because
+the same users hammer the endpoint, it exercises the per-user rate limiter under a
+realistic "link just went live" spike. Reports `throttled_requests` plus the
+`accepted` / `rejected_rate_limited` / `rejected_admission` counters. Override the ramp
+with `STAGES`.
 
 `rate_limit_load.js` also uses `K6_VUS` and `K6_DURATION`, but assigns a **stable
 per-VU `user_id`** (`rl-user-<VU>`) instead of a fresh UUID per request. That means
@@ -82,6 +93,6 @@ Example with custom load shape:
 
 ```bash
 K6_VUS=100 K6_DURATION=5m scripts/run-gcp-load-test.sh constant_load
-K6_STAGES='[{"duration":"2m","target":200},{"duration":"3m","target":800},{"duration":"1m","target":0}]' \
+STAGES='[{"duration":"2m","target":200},{"duration":"3m","target":800},{"duration":"1m","target":0}]' \
   scripts/run-gcp-load-test.sh dynamic_load
 ```

@@ -9,14 +9,14 @@ set -euo pipefail
 #   scripts/gcp/run-tests.sh -p PROJECT_ID [-z ZONE] [-o OUTDIR] [SCENARIO]
 #
 #   SCENARIO   k6 script name (default constant_load). ".js" optional.
-#              e.g. constant_load | dynamic_load | rate_limit_load
+#              e.g. constant_load | dynamic_load | flash_sale | rate_limit_load
 #   -p  GCP project id   (PROJECT)  [required]
 #   -z  GCP zone         (ZONE)     [default europe-west3-a]
 #   -o  local out dir    (OUTDIR)   [default results/<timestamp>-<scenario>]
 #
 # Load shape overrides are passed through as env vars, e.g.:
 #   K6_VUS=100 K6_DURATION=2m scripts/gcp/run-tests.sh -p PROJECT constant_load
-#   K6_STAGES='[...]'          scripts/gcp/run-tests.sh -p PROJECT dynamic_load
+#   STAGES='[...]'          scripts/gcp/run-tests.sh -p PROJECT dynamic_load
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF_DIR="$ROOT/infrastructure/terraform/gcp"
@@ -76,8 +76,9 @@ fi
 echo ">> Load balancer is ready."
 
 # Forward BASE_URL (the LB) + any K6_* load-shape overrides to the remote helper.
+# STAGES (not K6_STAGES — reserved) overrides the ramp for dynamic_load / flash_sale.
 env_assignments=("BASE_URL='$api_url'" "EVENT_ID='${EVENT_ID:-1}'")
-for v in K6_VUS K6_DURATION K6_STAGES; do
+for v in K6_VUS K6_DURATION STAGES; do
   if [ -n "${!v:-}" ]; then env_assignments+=("$v='${!v}'"); fi
 done
 remote_command="sudo $(printf "%s " "${env_assignments[@]}")/usr/local/bin/run-k6.sh '$SCENARIO'"

@@ -217,3 +217,7 @@ CLAUDE.md
 **/.terraform/
 *.tfstate
 *.tfstate.*
+
+
+# test run info
+results/

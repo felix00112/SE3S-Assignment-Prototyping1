@@ -55,7 +55,10 @@ terraform -chdir="$TF_DIR" apply -auto-approve \
   -var="node_count=$NODES" \
   -var="machine_type=$MACHINE" \
   -var="initial_seats=$SEATS" \
-  -var="load_generator_enabled=$LOADGEN"
+  -var="load_generator_enabled=$LOADGEN" \
+  -var="worker_batch_size=250" \
+  -var="worker_interval_seconds=0.5" \
+  -var="worker_synthetic_dummy_mode=true"
 
 echo
 echo ">> Cluster is up. Give the VMs ~2-3 min to finish booting, then load-test via:"

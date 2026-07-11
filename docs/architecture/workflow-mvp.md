@@ -1,66 +1,75 @@
 # Workflow MVP
 
-This document describes the currently implemented minimal booking workflow MVP.
+This document describes the implemented booking workflow. Everything below is built
+except the optional cleanup worker.
 
 ## Diagram
 
-Implemented MVP parts are marked with `[MVP]`. Planned-next parts are marked with `[NEXT]`.
+The stateless API tier scales horizontally (deployed as 1 / 3 / 5 nodes of the same
+instance type); Redis and the single worker stay singular so the atomic reserve stays
+correct regardless of replica count.
 
 ```mermaid
 flowchart TD
-    client["Client / Manual HTTP Tests"] --> api["FastAPI API [MVP]\nPOST /events/{event_id}/book"]
-    api --> queue["Redis Booking Queue [MVP]\nevent:{event_id}:booking_queue"]
-    queue --> worker["Worker Cell [MVP]\nBLPOP consumer"]
-    worker --> lua["Atomic Redis Lua Script [MVP]\nreserve_atomic.lua"]
-    lua --> seats["Redis seats_available counter [MVP]"]
-    lua --> users["Redis reserved_users set [MVP]"]
-    lua --> reservation["Redis reservation state [MVP]\nstatus / event_id / user_id"]
-    reservation --> status["Status Endpoint [MVP]\nGET /reservations/{reservation_id}"]
+    client["Client / k6 Load Generator"] --> nginx["Nginx Load Balancer<br/>:80, least_conn"]
+
+    subgraph apitier["Stateless API tier — scales 1 / 3 / 5 nodes"]
+        api1["FastAPI API 1"]
+        api2["FastAPI API 2"]
+        apiN["FastAPI API N"]
+    end
+    nginx --> api1
+    nginx --> api2
+    nginx --> apiN
+
+    api1 --> ratelimit["Redis Rate Limiter<br/>per-user token bucket → 429"]
+    api2 --> ratelimit
+    apiN --> ratelimit
+    ratelimit --> gate{"Admission Gate<br/>queue not full?"}
+    gate -- "no" --> reject["429 / 503 rejected"]
+    gate -- "yes" --> queue["Redis Booking Queue<br/>event:{event_id}:booking_queue"]
+
+    queue --> worker["Worker (single)<br/>BLPOP consumer"]
+    worker --> lua["Atomic Redis Lua Script<br/>reserve_atomic.lua"]
+    lua --> seats["Redis seats_available counter"]
+    lua --> users["Redis reserved_users set"]
+    lua --> reservation["Redis reservation state<br/>status / event_id / user_id"]
+    reservation --> status["Status Endpoint<br/>GET /reservations/{reservation_id}"]
 
     client --> status
-
-    nginx["Nginx Load Balancer [NEXT]"]
-    replicas["FastAPI Replicas [NEXT]"]
-    ratelimit["Redis Rate Limiter [NEXT]"]
-    gate["Admission Gate [NEXT]"]
-    cleanup["Cleanup Worker [optional]"]
-    k6["k6 Load Tests [NEXT]"]
-
-    k6 --> nginx
-    nginx --> replicas
-    replicas --> ratelimit
-    ratelimit --> gate
-    gate --> queue
-    cleanup --> reservation
+    cleanup["Cleanup Worker<br/>optional / not implemented"] -.-> reservation
 ```
 
 ## Scope
 
 - Single prototype event (`event:1`)
-- FastAPI request intake
+- Nginx load balancer in front of a horizontally-scaled, stateless FastAPI tier
+- Per-user rate limiter (429) and queue-capacity admission gate (503) — overload mitigation
 - Redis-backed booking queue
-- Worker-based asynchronous processing
+- Single-worker asynchronous processing
 - Atomic booking decision via Redis Lua script
 - Reservation status lookup endpoint
 
 ## Request Flow
 
-1. A client sends `POST /events/{event_id}/book` with a `user_id`
-2. The API generates a `reservation_id`
-3. The API stores:
+1. The load balancer forwards `POST /events/{event_id}/book` (with a `user_id`) to one of the API replicas
+2. The API checks the **rate limiter** (per-user token bucket); over-limit → `429`
+3. The API generates a `reservation_id`
+4. The API checks the **admission gate** (queue-length cap); queue full → `503`
+5. On admission, the reservation metadata is written and the payload enqueued atomically:
    - `reservation:{reservation_id}:status = pending`
    - `reservation:{reservation_id}:event_id = {event_id}`
    - `reservation:{reservation_id}:user_id = {user_id}`
-4. The API enqueues a JSON payload into `event:{event_id}:booking_queue`
-5. The worker consumes queue items with `BLPOP`
-6. The worker calls the Lua script in `infrastructure/redis/lua/reserve_atomic.lua`
-7. The Lua script atomically:
+   - `RPUSH` a JSON payload into `event:{event_id}:booking_queue`
+6. The worker consumes queue items with `BLPOP`
+7. The worker calls the Lua script in `infrastructure/redis/lua/reserve_atomic.lua`
+8. The Lua script atomically:
    - checks whether the event exists
    - checks whether the user already reserved
    - checks whether seats are still available
    - decrements seat count if possible
    - updates `reservation:{reservation_id}:status`
-8. The client polls `GET /reservations/{reservation_id}`
+9. The client polls `GET /reservations/{reservation_id}`
 
 ## Detailed Statuses
 

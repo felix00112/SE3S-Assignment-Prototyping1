@@ -1,6 +1,14 @@
 output "api_url" {
-  description = "Public URL for the FastAPI MVP."
-  value       = "http://${google_compute_instance.mvp[0].network_interface[0].access_config[0].nat_ip}:8000"
+  description = "Public entry point: the Nginx load balancer on the coordinator node (port 80), which fans out across all API replicas. Point load tests here."
+  value       = "http://${google_compute_instance.mvp[0].network_interface[0].access_config[0].nat_ip}"
+}
+
+output "api_urls" {
+  description = "Direct per-replica URLs (node 0 = coordinator), port 8000, for debugging individual nodes. Normal traffic should go through api_url (the load balancer) instead."
+  value = [
+    for instance in google_compute_instance.mvp :
+    "http://${instance.network_interface[0].access_config[0].nat_ip}:8000"
+  ]
 }
 
 output "coordinator_instance_name" {
@@ -18,8 +26,8 @@ output "node_names" {
   value       = [for instance in google_compute_instance.mvp : instance.name]
 }
 
-output "worker_ssh_commands" {
-  description = "SSH commands for worker nodes."
+output "api_ssh_commands" {
+  description = "SSH commands for the stateless API replica nodes (node index >= 1)."
   value = [
     for instance in slice(google_compute_instance.mvp, 1, length(google_compute_instance.mvp)) :
     "gcloud compute ssh ${instance.name} --zone ${var.zone} --project ${var.project_id}"

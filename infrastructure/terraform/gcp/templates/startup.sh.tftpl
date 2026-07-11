@@ -34,18 +34,60 @@ if [ "${node_role}" = "coordinator" ]; then
   done
 
   docker-compose -f docker-compose.gcp.yml exec -T redis redis-cli SET event:${event_id}:seats_available ${initial_seats}
-elif [ "${node_role}" = "worker" ]; then
+
+  # --- Nginx load balancer across every API replica (this node's own API + the
+  # api-only nodes). Backends are static private IPs templated by Terraform. ---
+  cat > /opt/se3s/nginx.gcp.conf <<'NGINX'
+events {}
+http {
+    upstream api_backend {
+        least_conn;
+${nginx_upstream}
+    }
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://api_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+}
+NGINX
+
+  # Wait until every API backend answers before starting the LB, so it does not
+  # come up routing to backends that are still booting.
+  for ip in ${api_backend_ips}; do
+    until curl -sf "http://$${ip}:8000/health" >/dev/null; do sleep 2; done
+  done
+
+  docker run -d --name se3s-lb --restart unless-stopped --network host \
+    -v /opt/se3s/nginx.gcp.conf:/etc/nginx/nginx.conf:ro \
+    nginx:alpine
+elif [ "${node_role}" = "api" ]; then
+  # Stateless API replica: wait for the coordinator's Redis to answer, then
+  # bring up an API-only container that points at it.
   until docker run --rm redis:7-alpine redis-cli -h "${redis_host}" ping; do
     sleep 2
   done
 
-  docker-compose -f docker-compose.gcp-worker.yml up -d --build --scale worker=${worker_replicas_per_node}
+  docker-compose -f docker-compose.gcp-api.yml up -d --build
 else
   cat > /usr/local/bin/run-k6.sh <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
 SCENARIO="$${1:-constant_load.js}"
+NAME="$${SCENARIO%.js}"
+TS="$(date +%Y%m%d-%H%M%S)"
+
+# Reports land here and are fetched back by scripts/gcp/run-tests.sh.
+#   raw-*.csv      : per-sample time series (throughput / latency / VUs over time)
+#   summary-*.json : end-of-run aggregates (+ accepted / rejected counters)
+OUT_DIR=/opt/se3s/k6-out
+mkdir -p "$${OUT_DIR}"
+chmod 777 "$${OUT_DIR}"
 
 cd /opt/se3s/app
 
@@ -54,6 +96,7 @@ docker_args=(
   -e BASE_URL="$${BASE_URL:-}"
   -e EVENT_ID="$${EVENT_ID:-1}"
   -v /opt/se3s/app/tests/k6:/scripts:ro
+  -v "$${OUT_DIR}":/out
 )
 
 if [ -n "$${K6_VUS:-}" ]; then
@@ -68,7 +111,10 @@ if [ -n "$${K6_STAGES:-}" ]; then
   docker_args+=(-e K6_STAGES="$${K6_STAGES}")
 fi
 
-sudo docker run "$${docker_args[@]}" grafana/k6:latest run "/scripts/$${SCENARIO}"
+sudo docker run "$${docker_args[@]}" grafana/k6:latest run \
+  --summary-export "/out/summary-$${NAME}-$${TS}.json" \
+  --out "csv=/out/raw-$${NAME}-$${TS}.csv" \
+  "/scripts/$${SCENARIO}"
 SCRIPT
 
   chmod +x /usr/local/bin/run-k6.sh

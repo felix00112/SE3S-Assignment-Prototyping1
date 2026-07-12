@@ -115,11 +115,18 @@ export function buildFlashSaleOptions() {
 // Every sample carries a `role` tag (bots/flood) plus k6's built-in `scenario` tag,
 // so the 429s and 503s are cleanly attributable to each population.
 //
+// This is a CORRECTNESS demonstration of the two gates, NOT an API stress test. The
+// defaults are sized to show both gates rejecting cleanly, staying comfortably within
+// the API's serving capacity so requests get real 429/503 responses instead of dropped
+// connections (EOF). The admission gate trips easily because the worker drains only
+// ~100/s (WORKER_BATCH_SIZE=100 / WORKER_INTERVAL_SECONDS=1.0), so FLOOD_RATE only needs
+// to sit modestly above that to back the queue up — not saturate the front door.
+//
 // Knobs use COMBINED_*/BOTS_*/FLOOD_* (NOT K6_VUS/K6_DURATION, which are reserved and
-// would replace the whole scenarios block with a single closed loop). If no 503s show
-// up, FLOOD_RATE is below the worker's drain rate — raise it (or lower the API's
-// ADMISSION_MAX_QUEUE_LENGTH). Keep the worker RUNNING, or the queue never drains and
-// everything trivially becomes 503.
+// would replace the whole scenarios block with a single closed loop). Keep the worker
+// RUNNING, or the queue never drains and everything trivially becomes 503. If you see
+// EOF / "server closed idle connection", FLOOD_RATE is above what the API can serve —
+// LOWER it (that's front-door saturation, not the admission gate).
 export function buildCombinedGatesOptions() {
   const duration = parseDuration(__ENV.COMBINED_DURATION, '1m');
   return {
@@ -134,11 +141,14 @@ export function buildCombinedGatesOptions() {
       flood: {
         executor: 'constant-arrival-rate',
         exec: 'flood',
-        rate: parsePositiveInt(__ENV.FLOOD_RATE, 2000),
+        // ~2.5x the ~100/s worker drain: enough to fill the queue and trip the
+        // admission gate within seconds, while staying well under the single-worker
+        // API's serving capacity so there are no dropped connections.
+        rate: parsePositiveInt(__ENV.FLOOD_RATE, 250),
         timeUnit: '1s',
         duration,
-        preAllocatedVUs: parsePositiveInt(__ENV.FLOOD_PREALLOCATED_VUS, 300),
-        maxVUs: parsePositiveInt(__ENV.FLOOD_MAX_VUS, 2000),
+        preAllocatedVUs: parsePositiveInt(__ENV.FLOOD_PREALLOCATED_VUS, 50),
+        maxVUs: parsePositiveInt(__ENV.FLOOD_MAX_VUS, 300),
         tags: { role: 'flood' },
       },
     },

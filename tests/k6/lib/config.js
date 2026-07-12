@@ -102,3 +102,45 @@ export function buildFlashSaleOptions() {
     ]),
   };
 }
+
+// Trips BOTH protection layers in a single run using two concurrent populations,
+// one per gate, so they don't fight each other (the rate limiter runs first in the
+// request path, so anything it throttles never reaches the admission gate):
+//   - `bots`:  a small pool of STABLE user ids hammering closed-loop as the same
+//              users -> each blows past its token bucket -> 429 (rate limiter).
+//   - `flood`: a legit crowd with a UNIQUE uuid per request, offered OPEN-LOOP at a
+//              fixed arrival rate -> fresh users sail past the rate limiter and pile
+//              onto the booking queue faster than the single worker drains -> 503
+//              (admission gate).
+// Every sample carries a `role` tag (bots/flood) plus k6's built-in `scenario` tag,
+// so the 429s and 503s are cleanly attributable to each population.
+//
+// Knobs use COMBINED_*/BOTS_*/FLOOD_* (NOT K6_VUS/K6_DURATION, which are reserved and
+// would replace the whole scenarios block with a single closed loop). If no 503s show
+// up, FLOOD_RATE is below the worker's drain rate — raise it (or lower the API's
+// ADMISSION_MAX_QUEUE_LENGTH). Keep the worker RUNNING, or the queue never drains and
+// everything trivially becomes 503.
+export function buildCombinedGatesOptions() {
+  const duration = parseDuration(__ENV.COMBINED_DURATION, '1m');
+  return {
+    scenarios: {
+      bots: {
+        executor: 'constant-vus',
+        exec: 'bots',
+        vus: parsePositiveInt(__ENV.BOTS_VUS, 20),
+        duration,
+        tags: { role: 'bots' },
+      },
+      flood: {
+        executor: 'constant-arrival-rate',
+        exec: 'flood',
+        rate: parsePositiveInt(__ENV.FLOOD_RATE, 2000),
+        timeUnit: '1s',
+        duration,
+        preAllocatedVUs: parsePositiveInt(__ENV.FLOOD_PREALLOCATED_VUS, 300),
+        maxVUs: parsePositiveInt(__ENV.FLOOD_MAX_VUS, 2000),
+        tags: { role: 'flood' },
+      },
+    },
+  };
+}

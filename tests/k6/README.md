@@ -88,6 +88,36 @@ per-user rate limiter. It reports a `throttled_requests` rate (the share of
 responses that came back `429`); `constant_load.js` / `dynamic_load.js` generate a
 unique user per request and therefore only measure throughput, never throttling.
 
+`combined_gates.js` trips **both protection layers in a single run**. The two gates
+are antagonistic — the rate limiter runs first in the request path, so whatever it
+throttles never reaches the admission gate — so instead of one crowd it runs **two
+concurrent populations**, one per gate:
+
+- **`bots`** — a small pool of `BOTS_VUS` (default 20) **stable** ids (`bot-user-<VU>`)
+  hammering closed-loop as the same users. Each blows past its per-user token bucket →
+  **429** (rate limiter). Their admitted share is tiny, so they barely touch the queue.
+- **`flood`** — a legit flash-sale crowd, **unique** uuid per request, offered
+  **open-loop** at `FLOOD_RATE` (default 2000/s). Fresh users pass the rate limiter and
+  pile onto the booking queue faster than the single worker drains → **503** (admission
+  gate).
+
+Both fire independently, and every sample carries a `role` tag (`bots`/`flood`) plus
+k6's built-in `scenario` tag, so the 429s and 503s attribute cleanly (filter
+`rejected_rate_limited{role:bots}` and `rejected_admission{role:flood}`). Reports the
+`accepted` / `rejected_rate_limited` / `rejected_admission` counters from
+`lib/outcome.js`. **Keep the worker running** (otherwise the queue never drains and
+*everything* becomes 503, which proves nothing). **If no 503s appear**, `FLOOD_RATE` is
+below the worker's drain rate — raise it, or lower the API's
+`ADMISSION_MAX_QUEUE_LENGTH`. Knobs: `COMBINED_DURATION`, `BOTS_VUS`, `FLOOD_RATE`,
+`FLOOD_PREALLOCATED_VUS`, `FLOOD_MAX_VUS` (**not** `K6_VUS` / `K6_DURATION` — reserved,
+they'd collapse the scenarios block into a single closed loop).
+
+```bash
+FLOOD_RATE=3000 BOTS_VUS=20 COMBINED_DURATION=1m \
+  docker run --rm -e BASE_URL=http://host.docker.internal:8000 -e EVENT_ID=1 \
+  -v "$(pwd)/tests/k6:/scripts:ro" grafana/k6:latest run /scripts/combined_gates.js
+```
+
 `oversell_test.js` is a **correctness** test for the atomic reserve, not a
 throughput test. It fires `TOTAL_REQUESTS` bookings (default `EXPECTED_SEATS * 3`)
 with a unique user each, follows every accepted booking to its final status, and

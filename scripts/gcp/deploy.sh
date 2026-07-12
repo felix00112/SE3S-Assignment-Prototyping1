@@ -56,7 +56,7 @@ terraform -chdir="$TF_DIR" apply -auto-approve \
   -var="machine_type=$MACHINE" \
   -var="initial_seats=$SEATS" \
   -var="load_generator_enabled=$LOADGEN" \
-  -var="worker_batch_size=500" \
+  -var="worker_batch_size=100" \
   -var="worker_interval_seconds=1" \
   -var="worker_synthetic_dummy_mode=true"
 

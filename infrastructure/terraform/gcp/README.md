@@ -107,6 +107,99 @@ After apply finishes, Terraform prints `api_url`.
 
 If the optional load-generator is enabled, Terraform also prints `load_generator_ssh_command`.
 
+## Helper Scripts
+
+If you do not want to run the raw Terraform and `gcloud` commands manually every time, use the helper scripts in [scripts/gcp](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/scripts/gcp:1):
+
+```text
+scripts/gcp/
+├── deploy.sh
+├── destroy.sh
+├── reset.sh
+├── run-tests.sh
+└── summarize.py
+```
+
+These wrap the most common deployment and evaluation steps:
+
+- `scripts/gcp/deploy.sh`
+  deploys the cluster with Terraform
+- `scripts/gcp/run-tests.sh`
+  runs a `k6` scenario from the dedicated load-generator VM and downloads the reports
+- `scripts/gcp/reset.sh`
+  resets Redis on the coordinator and reseeds the seat counter between runs
+- `scripts/gcp/destroy.sh`
+  destroys the deployed GCP environment
+- `scripts/gcp/summarize.py`
+  prints headline metrics from a downloaded `k6` summary JSON file
+
+### Wrapper-Based Quick Path
+
+Deploy a cluster with a dedicated load generator:
+
+```bash
+scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n 3
+```
+
+Useful flags:
+
+- `-n 1|3|5` selects the horizontal scaling configuration
+- `-m MACHINE_TYPE` changes the VM type for vertical-scaling comparisons
+- `-s SEATS` sets the initial seat inventory
+- `-r SOURCE_REF` selects the pushed Git branch or commit to deploy
+- `-g true|false` enables or disables the dedicated load-generator VM
+
+Example:
+
+```bash
+scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n 5 -m e2-standard-2 -s 100000 -r your-branch -g true
+```
+
+Run a test scenario:
+
+```bash
+scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID constant_load
+scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID combined_gates
+```
+
+Examples with overrides:
+
+```bash
+K6_VUS=100 K6_DURATION=2m scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID constant_load
+scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID combined_gates
+```
+
+Reset Redis between repeated runs on the same cluster:
+
+```bash
+scripts/gcp/reset.sh -p YOUR_PROJECT_ID
+scripts/gcp/reset.sh -p YOUR_PROJECT_ID -s 100000 -e 1
+```
+
+Destroy the environment after you finish measuring:
+
+```bash
+scripts/gcp/destroy.sh -p YOUR_PROJECT_ID
+```
+
+Summarize a downloaded `k6` result manually:
+
+```bash
+python3 scripts/gcp/summarize.py results/TIMESTAMP-SCENARIO/k6-out/summary-REPORT.json
+```
+
+### Tested Workflow
+
+For each configuration (`1`, `3`, or `5` nodes):
+
+```bash
+scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n 3
+scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID constant_load
+scripts/gcp/reset.sh -p YOUR_PROJECT_ID
+scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID combined_gates
+scripts/gcp/destroy.sh -p YOUR_PROJECT_ID
+```
+
 ## Smoke Test
 
 ```bash

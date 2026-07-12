@@ -37,7 +37,6 @@ flowchart TD
     reservation --> status["Status Endpoint<br/>GET /reservations/{reservation_id}"]
 
     client --> status
-    cleanup["Cleanup Worker<br/>optional / not implemented"] -.-> reservation
 ```
 
 ## Scope
@@ -94,15 +93,15 @@ flowchart TD
 - Redis:
   - holds queue, seat counters, reserved-user set, and reservation state
 
-## Why The Redis Folders Exist
+## Why The Redis Docs Exist
 
-The Redis-related folders under `infrastructure/redis/` are intentionally simple:
+The Redis-related documentation is intentionally split by concern:
 
-- `booking-queue/`
+- [booking-queue.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/docs/architecture/booking-queue.md:1)
   - documents the queue key and payload contract
   - the queue logic itself is executed by the API and worker
 
-- `reservation-state/`
+- [reservation-state.md](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/docs/architecture/reservation-state.md:1)
   - documents the shared Redis key model for reservation state
   - this is the contract used by API, worker, and Lua script
 
@@ -114,8 +113,10 @@ This means the repo separates:
 - running code
   - API in `services/api/`
   - worker in `workers/cells/`
-- Redis architecture and state contracts
-  - `infrastructure/redis/*`
+- Redis executable logic
+  - `infrastructure/redis/lua/`
+- architecture documentation
+  - `docs/architecture/`
 
 The intention is clarity, not extra abstraction.
 

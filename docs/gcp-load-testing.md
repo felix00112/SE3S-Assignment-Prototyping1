@@ -1,122 +1,79 @@
 # GCP Load Testing Runbook
 
-This runbook is the shortest reliable path for deploying the booking MVP to GCP and running `k6` load tests from the dedicated load-generator VM.
+This runbook describes the tested GCP testing workflow for the booking prototype.
+
+We currently use only two tested `k6` scenarios:
+
+- `constant_load`
+  the baseline scenario for comparing the `1`, `3`, and `5` node deployments
+- `combined_gates`
+  the realistic protection-layer scenario where the rate limiter and admission gate both come into play
+
+This is intentional:
+
+- `constant_load` is good for baseline throughput and latency comparisons across cluster sizes
+- `constant_load` uses a fresh user per request, so the per-user rate limiter does almost nothing there
+- `combined_gates` adds the realistic overload behavior by exercising both `429` rate limiting and `503` admission shedding in one run
 
 ## Before You Start
 
 Make sure these are true first:
 
-- your local branch contains the latest GCP and `k6` fixes
+- your local branch contains the latest GCP and `k6` changes
 - that branch is pushed to GitHub
 - `gcloud auth application-default login` has been run
 - the Compute Engine API is enabled in your GCP project
 
 The GCP VMs clone from GitHub during startup, so local-only changes are not enough.
 
-## Quick Path (wrapper scripts)
+## Quick Path
 
-Three parameterized helpers wrap the raw Terraform/gcloud commands:
+The tested flow uses the helper scripts in [scripts/gcp](/Users/felixhauptmann/PycharmProjects/SE3S-Assignment-Prototyping1/scripts/gcp:1):
 
 ```bash
-scripts/gcp/deploy.sh   -p PROJECT_ID -n 3            # deploy a 3-node cluster + load generator
-scripts/gcp/run-tests.sh -p PROJECT_ID baseline_scaling # run a scenario, fetch reports, print headline metrics
-scripts/gcp/destroy.sh  -p PROJECT_ID                # tear everything down
+scripts/gcp/deploy.sh -p PROJECT_ID -n 3
+scripts/gcp/run-tests.sh -p PROJECT_ID constant_load
+scripts/gcp/reset.sh -p PROJECT_ID
+scripts/gcp/run-tests.sh -p PROJECT_ID combined_gates
+scripts/gcp/destroy.sh -p PROJECT_ID
 ```
 
-`deploy.sh` flags: `-n` node_count (1/3/5), `-m` machine_type (raise for vertical
-scaling), `-s` initial_seats, `-r` source_ref (defaults to your current branch),
-`-g` load generator on/off. `run-tests.sh` accepts the scenario name and passes
-through `K6_VUS` / `K6_DURATION` / `STAGES` / `BASELINE_*`.
+`run-tests.sh` downloads the results into `results/<timestamp>-<scenario>/k6-out/`:
 
-### Reports & plots
+- `raw-*.csv` for time-series analysis and plots
+- `summary-*.json` for headline aggregate metrics
 
-`run-tests.sh` pulls two files back into `results/<timestamp>-<scenario>/k6-out/`:
+You can summarize a downloaded JSON report with:
 
-- `raw-*.csv` — per-sample **time series** (throughput, latency, VUs over time, and
-  per-request `status`) — feed this straight into your plotting tool.
-- `summary-*.json` — end-of-run aggregates, including the `accepted`,
-  `rejected_rate_limited` (429) and `rejected_admission` (503) counters.
-
-`scripts/gcp/summarize.py <summary.json>` prints the headline numbers (throughput,
-latency percentiles, users, accepted/rejected). The rest of this document is the
-manual, step-by-step version of the same flow.
+```bash
+python3 scripts/gcp/summarize.py results/TIMESTAMP-SCENARIO/k6-out/summary-REPORT.json
+```
 
 ## 1. Deploy The Environment
 
-From the repo root:
+From the repository root:
 
 ```bash
-terraform -chdir=infrastructure/terraform/gcp init
-
-terraform -chdir=infrastructure/terraform/gcp apply \
-  -var="project_id=YOUR_PROJECT_ID" \
-  -var="source_ref=YOUR_BRANCH_OR_COMMIT" \
-  -var="node_count=1" \
-  -var="load_generator_enabled=true" \
-  -var="initial_seats=100000"
+scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n 3
 ```
 
-Notes:
+Important notes:
 
-- `source_ref` should be a pushed branch name or a commit SHA
-- `initial_seats=100000` avoids an immediate `sold_out` result during throughput tests
-- **`node_count` sets how many API nodes you get** — it must be `1`, `3`, or `5`
-  (the assignment's single-node / 3-node / 5-node configs, all one instance type).
-  Node 0 hosts Redis + the single worker + the Nginx load balancer; nodes 1..N-1
-  are stateless API-only replicas. See "Choosing The Cluster Size" below.
-- `api_url` resolves to the **Nginx load balancer on node 0 (port 80)**, which
-  distributes across all API replicas — always send load here, not at a single node.
+- `-n 1|3|5` selects the horizontal scaling configuration
+- all three configurations use the same instance type
+- node `0` hosts Redis, the worker, and the `Nginx` load balancer
+- the remaining nodes are stateless API replicas
+- the public entry point is the load balancer on port `80`
 
-## Choosing The Cluster Size (node_count)
-
-`node_count` is the single knob for horizontal scaling — the number of API-serving
-VMs. Change it per deploy:
+For vertical-scaling comparisons, keep `-n` fixed and change the machine type:
 
 ```bash
--var="node_count=1"   # config (a): 1 node  (LB + API + Redis + worker on one VM)
--var="node_count=3"   # config (b): 3 nodes (coordinator + 2 API replicas)
--var="node_count=5"   # config (c): 5 nodes (coordinator + 4 API replicas)
+scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n 3 -m e2-standard-2
 ```
 
-To vertically scale instead (assignment bonus 2d), keep `node_count` fixed and raise
-the machine size, e.g. `-var="machine_type=e2-standard-2"`.
+## 2. Verify The Deployment
 
-### Scaling comparison workflow (a / b / c)
-
-Each configuration is a separate deploy → measure → destroy cycle, using the wrapper
-scripts (which handle apply, the load-balancer readiness wait, report fetch, and
-destroy):
-
-```bash
-for N in 1 3 5; do
-  scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n "$N"
-
-  # The baseline should use the same offered load on every deployment. A constant
-  # arrival rate does that more cleanly than fixed VUs because slower clusters do not
-  # automatically "back off" by spending more time blocked in request latency.
-  BASELINE_RATE=300 K6_DURATION=1m \
-    scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID baseline_scaling
-
-  scripts/gcp/destroy.sh -p YOUR_PROJECT_ID
-done
-```
-
-Which metric to plot:
-
-- **Requests handled/s** (`http_reqs` rate = accepted + cleanly-rejected 503) is the
-  API + load-balancer tier capacity. This should **rise from 1 → 3 → 5 nodes** — the
-  "horizontal scaling works" result.
-- **Accepted bookings/s** (the `accepted` counter / duration) is gated by the single
-  worker, so it stays roughly **flat** — that plateau is your scalability-limitations
-  point.
-
-Tip: sweep the baseline offered load (e.g. `BASELINE_RATE=150 300 450 600`) at each
-node count to find where each cluster size saturates; the peak requests-handled/s per
-size is the scaling curve.
-
-## 2. Verify The API Before Load Testing
-
-Wait until the coordinator VM finishes its startup script, then check:
+Check the health endpoint:
 
 ```bash
 curl "$(terraform -chdir=infrastructure/terraform/gcp output -raw api_url)/health"
@@ -135,59 +92,62 @@ gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID -
 "cd /opt/se3s/app && sudo docker-compose -f docker-compose.gcp.yml ps && echo '--- API LOGS ---' && sudo docker-compose -f docker-compose.gcp.yml logs --tail=100 api"
 ```
 
-## 3. Run A Baseline Load Test
+## 3. Run The Baseline Test
 
-From the repo root:
-
-```bash
-BASELINE_RATE=300 K6_DURATION=1m scripts/run-gcp-load-test.sh baseline_scaling
-```
-
-This uses the dedicated `baseline_scaling.js` profile:
-
-- `300` arrivals per second by default
-- `1m` duration
-- unique `user_id` per request
-- `503` counts as expected overload shedding, not a transport failure
-
-That makes it the cleanest requirement-2 comparison across `1 / 3 / 5` nodes.
-
-## 4. Override Load Shape
-
-Higher steady baseline load:
+Use `constant_load` as the baseline scenario:
 
 ```bash
-BASELINE_RATE=450 K6_DURATION=1m scripts/run-gcp-load-test.sh baseline_scaling
-BASELINE_RATE=600 K6_DURATION=2m scripts/run-gcp-load-test.sh baseline_scaling
+K6_VUS=100 K6_DURATION=2m scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID constant_load
 ```
 
-Ramp-up / ramp-down scenario:
+Why this is the baseline:
+
+- it gives a simple steady-load comparison across `1`, `3`, and `5` node clusters
+- it is good for comparing throughput and latency
+- it does not meaningfully exercise the per-user rate limiter, because it uses fresh users
+
+Tested comparison workflow:
 
 ```bash
-scripts/run-gcp-load-test.sh dynamic_load
+for N in 1 3 5; do
+  scripts/gcp/deploy.sh -p YOUR_PROJECT_ID -n "$N"
+  K6_VUS=100 K6_DURATION=2m scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID constant_load
+  scripts/gcp/destroy.sh -p YOUR_PROJECT_ID
+done
 ```
 
-Custom dynamic stages:
+Useful metrics to compare:
+
+- total requests handled
+- latency percentiles
+- accepted bookings
+
+This baseline is the clearest way to show how the API tier behaves as you scale the cluster size.
+
+## 4. Run The Realistic Protection Test
+
+Use `combined_gates` as the realistic scenario:
 
 ```bash
-STAGES='[{"duration":"2m","target":100},{"duration":"3m","target":400},{"duration":"1m","target":0}]' \
-  scripts/run-gcp-load-test.sh dynamic_load
+scripts/gcp/reset.sh -p YOUR_PROJECT_ID
+scripts/gcp/run-tests.sh -p YOUR_PROJECT_ID combined_gates
 ```
 
-## 5. Watch The Deployment While The Test Runs
+Why this scenario matters:
+
+- it demonstrates the per-user rate limiter with clean `429` responses
+- it demonstrates the admission gate with clean `503` responses
+- it shows both protection layers in one realistic flash-sale style run
+
+This is the tested scenario for showing that the system does not just scale, but also protects itself under overload.
+
+## 5. Watch The Deployment During A Run
 
 Container CPU and memory:
 
 ```bash
 gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID --command \
 "sudo docker stats --no-stream"
-```
-
-Repeated samples during a run:
-
-```bash
-gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID --command \
-"for i in \$(seq 1 10); do echo '--- sample' \$i; sudo docker stats --no-stream; sleep 2; done"
 ```
 
 Booking queue length:
@@ -204,17 +164,23 @@ gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID -
 "cd /opt/se3s/app && sudo docker-compose -f docker-compose.gcp.yml logs --tail=50 worker"
 ```
 
-## 6. Rate Limiter Caveat
+## 6. Interpreting The Two Tests
 
-The current `baseline_scaling.js`, `constant_load.js`, and `dynamic_load.js`
-intentionally generate a fresh UUID per request.
+`constant_load`:
 
-That means:
+- use it to compare baseline throughput and latency across cluster sizes
+- do not use it to argue that the rate limiter was validated
 
-- good for measuring throughput
-- not good for testing per-user throttling
+`combined_gates`:
 
-If you want to test the rate limiter, use a script that sends repeated requests with the same `user_id`.
+- use it to show realistic overload handling
+- use it to explain where `429` and `503` come from
+- use it to demonstrate that multiple protection layers work together
+
+Together, these two tests tell the story we actually care about:
+
+- how the system behaves under a clean baseline load
+- how the system behaves when all protection mechanisms come into action
 
 ## Troubleshooting
 
@@ -228,8 +194,6 @@ gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID -
 ```
 
 ### `docker-compose` fails with `ContainerConfig`
-
-This can happen on older `docker-compose` v1 installs when recreating an existing container in place.
 
 Use:
 
@@ -249,11 +213,10 @@ gcloud compute ssh se3s-mvp-loadgen --zone europe-west3-a --project YOUR_PROJECT
 
 ### The test runs with `1 VU` and `1 iteration`
 
-That means empty `K6_*` variables were injected into the load-generator helper. Fresh Terraform deployments should now avoid this, but if an older loadgen VM exists, recreate it or refresh `/usr/local/bin/run-k6.sh`.
+That usually means empty `K6_*` variables were injected into the remote helper. If needed, recreate the load-generator VM or refresh `/usr/local/bin/run-k6.sh`.
 
 ## Destroy
 
 ```bash
-terraform -chdir=infrastructure/terraform/gcp destroy \
-  -var="project_id=YOUR_PROJECT_ID"
+scripts/gcp/destroy.sh -p YOUR_PROJECT_ID
 ```

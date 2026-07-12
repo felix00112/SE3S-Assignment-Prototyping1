@@ -10,7 +10,7 @@ set -euo pipefail
 #
 #   SCENARIO   k6 script name (default constant_load). ".js" optional.
 #              e.g. baseline_scaling | constant_load | dynamic_load | flash_sale
-#                   | realistic_load | rate_limit_load
+#                   | realistic_load | rate_limit_load | combined_gates
 #
 # baseline_scaling is open-loop: control it with BASELINE_RATE / BASELINE_DURATION,
 # NOT K6_VUS / K6_DURATION (those are reserved by k6 and break its scenarios config).

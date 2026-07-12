@@ -123,45 +123,6 @@ Check the reservation status with the returned `reservation_id`:
 curl "$(terraform output -raw api_url)/reservations/RESERVATION_ID"
 ```
 
-## Debug
-
-SSH to the VM:
-
-```bash
-gcloud compute ssh se3s-mvp-vm --zone europe-west3-a --project YOUR_PROJECT_ID
-```
-
-Useful commands on the VM:
-
-```bash
-cd /opt/se3s/app
-sudo docker-compose -f docker-compose.gcp.yml ps
-sudo docker-compose -f docker-compose.gcp.yml logs -f api
-sudo docker-compose -f docker-compose.gcp.yml logs -f worker
-```
-
-API replica nodes (index >= 1) use `docker-compose.gcp-api.yml`:
-
-```bash
-cd /opt/se3s/app
-sudo docker-compose -f docker-compose.gcp-api.yml ps
-sudo docker-compose -f docker-compose.gcp-api.yml logs -f api
-```
-
-If the optional load-generator is enabled:
-
-```bash
-$(terraform output -raw load_generator_ssh_command)
-sudo /usr/local/bin/run-k6.sh constant_load.js
-```
-
-Or from the repo root on your machine:
-
-```bash
-scripts/run-gcp-load-test.sh constant_load
-scripts/run-gcp-load-test.sh dynamic_load
-```
-
 ## Destroy
 
 ```bash

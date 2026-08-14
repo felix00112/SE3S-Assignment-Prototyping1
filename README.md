@@ -199,7 +199,7 @@ This section maps the assignment requirements to concrete implementation choices
 
 The API layer is intentionally stateless, while Redis stores queue state, seat state, reservation state, and rate-limit state.
 
-Short example from [services/api/app/main.py](services/api/app/main.py:46):
+Short example from [services/api/app/main.py](./services/api/app/main.py#L46):
 
 ```python
 reservation_id = str(uuid4())
@@ -213,7 +213,7 @@ The API creates request metadata, but the persistent state is written to Redis i
 
 Horizontal scaling is implemented in Terraform by making the number of API-serving VMs configurable through `node_count`.
 
-Short example from [infrastructure/terraform/gcp/main.tf](infrastructure/terraform/gcp/main.tf:64):
+Short example from [infrastructure/terraform/gcp/main.tf](./infrastructure/terraform/gcp/main.tf#L64):
 
 ```hcl
 resource "google_compute_instance" "mvp" {
@@ -228,7 +228,7 @@ The load balancer upstream is generated from the same node list, so scaling from
 
 Vertical scaling is implemented by changing the VM type while keeping the deployment shape fixed.
 
-Short example from [infrastructure/terraform/gcp/variables.tf](infrastructure/terraform/gcp/variables.tf:13):
+Short example from [infrastructure/terraform/gcp/variables.tf](./infrastructure/terraform/gcp/variables.tf#L13):
 
 ```hcl
 variable "machine_type" {
@@ -250,7 +250,7 @@ if not allowed:
     raise HTTPException(status_code=429, ...)
 ```
 
-This is implemented in [services/api/app/main.py](services/api/app/main.py:47) and backed by the Redis token-bucket logic in [services/api/app/rate_limiter.py](services/api/app/rate_limiter.py:29).
+This is implemented in [services/api/app/main.py](./services/api/app/main.py#L47) and backed by the Redis token-bucket logic in [services/api/app/rate_limiter.py](./services/api/app/rate_limiter.py#L29).
 
 2. Queue-capacity admission control:
 
@@ -261,13 +261,13 @@ if qlen >= max_len then
 end
 ```
 
-This is implemented atomically in [infrastructure/redis/admission-gate/admit_and_enqueue.lua](infrastructure/redis/admission-gate/admit_and_enqueue.lua:19), so concurrent requests cannot overshoot the queue limit.
+This is implemented atomically in [infrastructure/redis/admission-gate/admit_and_enqueue.lua](./infrastructure/redis/admission-gate/admit_and_enqueue.lua#L19), so concurrent requests cannot overshoot the queue limit.
 
 ### Asynchronous Processing And Atomic Correctness
 
 The booking request is accepted first and resolved asynchronously by the worker.
 
-Short example from [workers/cells/worker.py](workers/cells/worker.py:52):
+Short example from [workers/cells/worker.py](./workers/cells/worker.py#L52):
 
 ```python
 status = reserve_ticket(
@@ -288,13 +288,13 @@ redis.call("DECR", seats_available_key)
 redis.call("SADD", reserved_users_key, user_id)
 ```
 
-This logic in [infrastructure/redis/lua/reserve_atomic.lua](infrastructure/redis/lua/reserve_atomic.lua:13) is what prevents overselling.
+This logic in [infrastructure/redis/lua/reserve_atomic.lua](./infrastructure/redis/lua/reserve_atomic.lua#L13) is what prevents overselling.
 
 ### Constant Work Pattern
 
 The worker executes a fixed number of processing slots per cycle instead of simply draining the queue as fast as possible.
 
-Short example from [workers/cells/worker.py](workers/cells/worker.py:119):
+Short example from [workers/cells/worker.py](./workers/cells/worker.py#L119):
 
 ```python
 for _ in range(batch_size):
@@ -304,7 +304,7 @@ for _ in range(batch_size):
         dummy_jobs += 1
 ```
 
-This means each cycle always consumes the configured slot budget, controlled by `WORKER_BATCH_SIZE` and `WORKER_INTERVAL_SECONDS`. When no real booking is available, the worker executes a synthetic dummy slot through [infrastructure/redis/lua/dummy_slot.lua](infrastructure/redis/lua/dummy_slot.lua:1) so the worker keeps performing comparable Redis-side work instead of becoming idle.
+This means each cycle always consumes the configured slot budget, controlled by `WORKER_BATCH_SIZE` and `WORKER_INTERVAL_SECONDS`. When no real booking is available, the worker executes a synthetic dummy slot through [infrastructure/redis/lua/dummy_slot.lua](./infrastructure/redis/lua/dummy_slot.lua) so the worker keeps performing comparable Redis-side work instead of becoming idle.
 
 
 ## Design Trade-Offs (Possible Limitations)
@@ -441,7 +441,7 @@ Admission-gate behavior:
 
 ## Load Testing
 
-The main load-test assets live in [tests/k6/README.md](tests/k6/README.md:1).
+The main load-test assets live in [tests/k6/README.md](./tests/k6/README.md).
 
 Typical local run:
 
@@ -460,7 +460,7 @@ Important scenarios include:
 
 ## GCP Deployment
 
-The first cloud deployment milestone lives in [infrastructure/terraform/gcp/README.md](infrastructure/terraform/gcp/README.md:1).
+The first cloud deployment milestone lives in [infrastructure/terraform/gcp/README.md](./infrastructure/terraform/gcp/README.md).
 
 The Terraform setup provisions:
 
@@ -484,7 +484,7 @@ terraform apply \
 
 ### GCP Helper Scripts
 
-The repository also includes wrapper scripts in [scripts/gcp](scripts/gcp:1) to make the deployment and evaluation workflow easier:
+The repository also includes wrapper scripts in [scripts/gcp](./scripts/gcp) to make the deployment and evaluation workflow easier:
 
 ```text
 scripts/gcp/
@@ -527,12 +527,12 @@ python3 scripts/gcp/summarize.py results/TIMESTAMP-SCENARIO/k6-out/summary-REPOR
 
 For the full deployment and measurement workflow, see:
 
-- [infrastructure/terraform/gcp/README.md](infrastructure/terraform/gcp/README.md:1)
-- [docs/gcp-load-testing.md](docs/gcp-load-testing.md:1)
+- [infrastructure/terraform/gcp/README.md](./infrastructure/terraform/gcp/README.md)
+- [docs/gcp-load-testing.md](./docs/gcp-load-testing.md)
 
 
 ## Related Documentation
 
-- [docs/architecture/workflow-mvp.md](docs/architecture/workflow-mvp.md:1)
-- [docs/gcp-load-testing.md](docs/gcp-load-testing.md:1)
-- [tests/k6/README.md](tests/k6/README.md:1)
+- [docs/architecture/workflow-mvp.md](./docs/architecture/workflow-mvp.md)
+- [docs/gcp-load-testing.md](./docs/gcp-load-testing.md)
+- [tests/k6/README.md](./tests/k6/README.md)
